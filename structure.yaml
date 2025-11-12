@@ -1,0 +1,23 @@
+backend:
+  app:
+    __init__.py: ""
+    main.py: ""
+    db.py: ""
+    models.py: ""
+    schemas.py: ""
+    deps.py: ""
+    routers:
+      __init__.py: ""
+      transactions.py: ""
+  tests:
+    __init__.py: ""
+    conftest.py: ""
+    test_health.py: ""
+    test_transactions.py: ""
+  alembic:
+    env.py: ""
+    versions: {}
+  alembic.ini: ""
+  pyproject.toml: ""
+  .env.example: ""
+

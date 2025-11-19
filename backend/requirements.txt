@@ -6,3 +6,4 @@ aiosqlite
 pytest
 httpx
 pytest-asyncio
+greenlet

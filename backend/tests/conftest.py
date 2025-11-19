@@ -1,36 +1,39 @@
 import pytest
-import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
-from sqlmodel import SQLModel
-from sqlalchemy.ext.asyncio import async_session, create_async_engine, AsyncSession
+from fastapi.testclient import TestClient
+from sqlalchemy import StaticPool, create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.db import Base, get_db
 from app.main import app
-from app.db import get_session
 
-transport = ASGITransport(app=app)
+# In-memory DB just for tests
+SQLALCHEMY_DATABASE_URL = "sqlite://"
 
-# @pytest.fixture(autouse=True)
-@pytest_asyncio.fixture(autouse=True)
-async def memory_db_override():
-    # in-memory DB for isolated tests
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
-    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
 
-    from app import models
+TestingSessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+)
 
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
+# Create all tables at the start of testing
+Base.metadata.create_all(bind=engine)
 
-    async def _get_session():
-        async with async_session() as s:
-            yield s
+def override_get_db():
+    db = TestingSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
-    app.dependency_overrides[get_session] = _get_session
-    yield
-    app.dependency_overrides.clear()
+app.dependency_overrides[get_db] = override_get_db
 
-@pytest_asyncio.fixture
-async def client():
-    async with AsyncClient(transport=transport, base_url="http://testserver") as c:
-        yield c
+
+@pytest.fixture()
+def client():
+    return TestClient(app)

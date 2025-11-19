@@ -1,28 +1,27 @@
-import os
-from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.pool import StaticPool
 
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
-from sqlmodel import SQLModel
+# Use SQLite by default (good for dev + tests)
+DATABASE_URL = "sqlite:///./budget.db"
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./budget.sqlite3")
-
-engine: AsyncEngine = create_async_engine(
+engine = create_engine(
     DATABASE_URL,
-    echo=False,
-    future=True,
+    connect_args={"check_same_thread": False},
 )
 
-async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+)
 
-@asynccontextmanager
-async def lifespan(app):
-    # Ensure tables exist at startup (dev convenience; prod uses Alembic)
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
-    yield 
+Base = declarative_base()
 
-async def get_session() -> AsyncIterator[AsyncSession]:
-    async with async_session() as session:
-        yield session
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

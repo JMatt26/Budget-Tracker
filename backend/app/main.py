@@ -1,11 +1,10 @@
 from fastapi import FastAPI
-from .db import lifespan
-from .routers.transactions import router as tx_router
+from .routers import transactions
 
-app = FastAPI(title="Budet App API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Budet App API", version="0.1.0")
 
 @app.get("/health")
 async def health():
     return {"status": "ok"}
 
-app.include_router(tx_router, prefix="/api/transactions", tags=["transactions"])
+app.include_router(transactions.router)

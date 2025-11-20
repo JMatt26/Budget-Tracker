@@ -7,3 +7,7 @@ pytest
 httpx
 pytest-asyncio
 greenlet
+python-jose[cryptography]
+passlib
+pydantic[email]
+python-multipart

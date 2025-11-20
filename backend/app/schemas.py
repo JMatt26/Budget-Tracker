@@ -46,3 +46,15 @@ class TransactionUpdate(BaseModel):
     date: Optional[date] = None
     type: Optional[str] = Field(None, pattern="^(income|expense)$")
     cateogry_id: Optional[int] = None
+
+
+class SummaryTotals(BaseModel):
+    total_income: Decimal
+    total_expense: Decimal
+    net: Decimal
+
+
+class SummaryResponse(BaseModel):
+    start_date: date | None = None
+    end_date: date | None = None
+    totals: SummaryTotals

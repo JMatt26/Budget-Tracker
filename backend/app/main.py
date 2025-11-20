@@ -1,5 +1,6 @@
 from fastapi import FastAPI
-from .routers import transactions, categories
+
+from .routers import transactions, categories, reports
 
 app = FastAPI(title="Budet App API", version="0.1.0")
 
@@ -9,3 +10,4 @@ async def health():
 
 app.include_router(transactions.router)
 app.include_router(categories.router)
+app.include_router(reports.router)

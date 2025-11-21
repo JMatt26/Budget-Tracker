@@ -1,8 +1,7 @@
-from datetime import date
 from decimal import Decimal
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -32,17 +31,38 @@ def create_budget(
     return budget
 
 
-@router.get("/", response_model=List[schemas.BudgetRead])
+@router.get("/", response_model=schemas.BudgetListResponse)
 def list_budgets(
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    return (
-        db.query(models.Budget)
-        .filter(models.Budget.user_id == current_user.id)
-        .order_by(models.Budget.start_date.desc())
+    query = db.query(models.Budget).filter(
+        models.Budget.user_id == current_user.id
+    )
+
+    total = query.count()
+
+    # Sort most recent budgets first; fall back on id
+    items = (
+        query.order_by(
+            models.Budget.start_date.desc(), 
+            models.Budget.id.desc(),
+        )
+        .offset(offset)
+        .limit(limit)
         .all()
     )
+
+    return schemas.BudgetListResponse(
+        items=items,
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
 
 
 @router.get("/{budget_id}", response_model=schemas.BudgetRead)

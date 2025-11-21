@@ -1,8 +1,9 @@
-from typing import List, Optional
+from typing import List, Optional, Literal
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from starlette.status import HTTP_204_NO_CONTENT
+from datetime import date
 
 from .. import models, schemas
 from ..db import get_db
@@ -46,25 +47,50 @@ def create_transaction(
 
 
 
-@router.get("/", response_model=List[schemas.TransactionRead])
+@router.get("/", response_model=schemas.TransactionListResponse)
 def list_transactions(
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    category_id: Optional[int] = Query(None),
+    type: Optional[Literal["income", "expense"]] = Query(None),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
-    type: Optional[str] = None,
-    category_id: Optional[int] = None,
+    min_amount: Optional[float] = Query(None),
+    max_amount: Optional[float] = Query(None),
 ):
     query = db.query(models.Transaction).filter(
         models.Transaction.user_id == current_user.id
     )
 
+    if start_date is not None:
+        query = query.filter(models.Transaction.date >= start_date)
+    if end_date is not None:
+        query = query.filter(models.Transaction.date <= end_date)
+    if min_amount is not None:
+        query = query.filter(models.Transaction.amount >= min_amount)
+    if max_amount is not None:
+        query = query.filter(models.Transaction.amount <= max_amount)
+    if category_id is not None:
+        query = query.filter(models.Transaction.category_id == category_id)
     if type is not None:
         query = query.filter(models.Transaction.type == type)
 
-    if category_id is not None:
-        query = query.filter(models.Transaction.category_id == category_id)
+    total = query.count()
+    items = (
+        query.order_by(models.Transaction.date.desc(), models.Transaction.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
 
-    return query.order_by(models.Transaction.date.desc()).all()
-
+    return schemas.TransactionListResponse(
+        items = items,
+        total = total,
+        limit = limit,
+        offset = offset
+    )
 
 
 @router.get("/{transaction_id}", response_model=schemas.TransactionRead)

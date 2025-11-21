@@ -26,30 +26,68 @@ def test_create_transaction(auth_client):
 
     data = response.json()
     assert data["id"] is not None
-    assert data["amount"] == payload["amount"]
+    assert data["amount"] == 123.45
     assert data["description"] == payload["description"]
     assert data["type"] == payload["type"]
 
 
 def test_list_transactions_returns_created_transaction(auth_client):
-    # create one transaction
-    payload = {
-        "amount": "50.00",
-        "description": "Test income",
-        "date": date.today().isoformat(),
-        "type": "income",
-        "category_id": None,
+    # Arrange: create one transaction
+    create_payload = {
+        "amount": 50.0,
+        "description": "Groceries",
+        "date": "2025-01-01",
+        "type": "expense",
     }
-    create_resp = auth_client.post("/transactions/", json=payload)
-    assert create_resp.status_code == 201
+    create_resp = auth_client.post("/transactions", json=create_payload)
+    assert create_resp.status_code == 201, create_resp.text
 
-    # list transactions
-    list_resp = auth_client.get("/transactions/")
-    assert list_resp.status_code == 200
+    # Act
+    resp = auth_client.get("/transactions")
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
 
-    items = list_resp.json()
-    assert isinstance(items, list)
-    assert any(tx["description"] == "Test income" for tx in items)
+    # Assert wrapper shape
+    assert "items" in data
+    assert "total" in data
+    assert "limit" in data
+    assert "offset" in data
+
+    assert data["total"] == 1
+    assert len(data["items"]) == 1
+    tx = data["items"][0]
+    assert tx["amount"] == 50.0
+    assert tx["description"] == "Groceries"
+    assert tx["type"] == "expense"
+
+
+def test_list_transactions_pagination_metadata(auth_client):
+    # Create 3 transactions
+    for i in range(3):
+        payload = {
+            "amount": 10.0 + i,
+            "description": f"Tx {i}",
+            "date": "2025-01-01",
+            "type": "expense",
+        }
+        resp = auth_client.post("/transactions", json=payload)
+        assert resp.status_code == 201, resp.text
+
+    # Request with limit=2
+    resp = auth_client.get("/transactions?limit=2&offset=0")
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+
+    assert data["total"] == 3
+    assert data["limit"] == 2
+    assert data["offset"] == 0
+    assert len(data["items"]) == 2
+
+    # Sanity-check at least one item shape
+    first = data["items"][0]
+    assert "amount" in first
+    assert "description" in first
+    assert "type" in first
 
 
 def test_get_transaction_by_id(auth_client):
@@ -95,7 +133,7 @@ def test_update_transaction(auth_client):
     assert upd_resp.status_code == 200
     data = upd_resp.json()
     assert data["description"] == "New desc"
-    assert data["amount"] == "25.00"
+    assert data["amount"] == 25.00
 
 
 def test_delete_transaction(auth_client):

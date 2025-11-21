@@ -27,14 +27,26 @@ def test_list_budgets(auth_client):
         "start_date": today.isoformat(),
         "end_date": (today + timedelta(days=30)).isoformat(),
     }
+
     auth_client.post("/budgets/", json=payload)
 
     resp = auth_client.get("/budgets/")
     assert resp.status_code == 200, resp.text
-    items = resp.json()
 
+    data = resp.json()
+
+    # New response wrapper
+    assert "items" in data
+    assert "total" in data
+    assert "limit" in data
+    assert "offset" in data
+
+    items = data["items"]
+
+    # Preserve original expectations
     assert isinstance(items, list)
     assert any(b["name"] == "Groceries Budget" for b in items)
+
 
 
 def test_get_budget_by_id(auth_client):

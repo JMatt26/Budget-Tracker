@@ -6,6 +6,7 @@ from starlette.status import HTTP_204_NO_CONTENT
 
 from .. import models, schemas
 from ..db import get_db
+from ..auth import get_current_user
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -16,53 +17,68 @@ router = APIRouter(prefix="/transactions", tags=["transactions"])
     status_code=status.HTTP_201_CREATED,
 )
 def create_transaction(
-    tx_in: schemas.TransactionCreate, 
-    db: Session = Depends(get_db)
+    tx_in: schemas.TransactionCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ):
     if tx_in.category_id is not None:
         category = (
             db.query(models.Category)
-            .filter(models.Category.id == tx_in.category_id)
+            .filter(
+                models.Category.id == tx_in.category_id,
+                models.Category.user_id == current_user.id,
+            )
             .first()
         )
         if category is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Category does not exist."
+                detail="Category does not exist.",
             )
 
-    tx = models.Transaction(**tx_in.model_dump())
+    tx_data = tx_in.model_dump()
+    tx = models.Transaction(**tx_data, user_id=current_user.id)
+
     db.add(tx)
     db.commit()
     db.refresh(tx)
     return tx
 
 
+
 @router.get("/", response_model=List[schemas.TransactionRead])
 def list_transactions(
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
     type: Optional[str] = None,
-    category_id: Optional[int] = None
+    category_id: Optional[int] = None,
 ):
-    query = db.query(models.Transaction)
+    query = db.query(models.Transaction).filter(
+        models.Transaction.user_id == current_user.id
+    )
 
     if type is not None:
         query = query.filter(models.Transaction.type == type)
-    
+
     if category_id is not None:
         query = query.filter(models.Transaction.category_id == category_id)
-    
+
     return query.order_by(models.Transaction.date.desc()).all()
+
 
 
 @router.get("/{transaction_id}", response_model=schemas.TransactionRead)
 def get_transaction(
     transaction_id: int,
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
 ):
     tx = (
         db.query(models.Transaction)
-        .filter(models.Transaction.id == transaction_id)
+        .filter(
+            models.Transaction.id == transaction_id,
+            models.Transaction.user_id == current_user.id,
+            )
         .first()
     )
     if tx is None:
@@ -78,10 +94,14 @@ def update_transaction(
     transaction_id: int,
     tx_update: schemas.TransactionUpdate,
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
 ):
     tx = (
         db.query(models.Transaction)
-        .filter(models.Transaction.id == transaction_id)
+        .filter(
+            models.Transaction.id == transaction_id,
+            models.Transaction.user_id == current_user.id
+            )
         .first()
     )
     if tx is None:
@@ -118,10 +138,14 @@ def update_transaction(
 def delete_transaction(
     transaction_id: int,
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
 ):
     tx = (
         db.query(models.Transaction)
-        .filter(models.Transaction.id == transaction_id)
+        .filter(
+            models.Transaction.id == transaction_id,
+            models.Transaction.user_id == current_user.id
+            )
         .first()
     )
     if tx is None:

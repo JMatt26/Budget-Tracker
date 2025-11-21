@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..db import get_db
+from ..auth import get_current_user
 
 router = APIRouter(prefix="/categories", tags=["categories"])
 
@@ -17,11 +18,14 @@ router = APIRouter(prefix="/categories", tags=["categories"])
 def create_category(
     category_in: schemas.CategoryCreate,
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ):
-    # Ensure name is unique
     existing = (
         db.query(models.Category)
-        .filter(models.Category.name == category_in.name)
+        .filter(
+            models.Category.user_id == current_user.id,
+            models.Category.name == category_in.name,
+        )
         .first()
     )
     if existing:
@@ -30,28 +34,41 @@ def create_category(
             detail="Category with this name already exists.",
         )
 
-    category = models.Category(**category_in.model_dump())
+    category = models.Category(
+        **category_in.model_dump(), user_id=current_user.id
+    )
     db.add(category)
     db.commit()
     db.refresh(category)
     return category
 
 
+
 @router.get("/", response_model=List[schemas.CategoryRead])
 def list_categories(
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ):
-    return db.query(models.Category).order_by(models.Category.name.asc()).all()
+    return (
+        db.query(models.Category)
+        .filter(models.Category.user_id == current_user.id)
+        .order_by(models.Category.name.asc())
+        .all()
+    )
 
 
 @router.get("/{category_id}", response_model=schemas.CategoryRead)
 def get_category(
     category_id: int,
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
 ):
     category = (
         db.query(models.Category)
-        .filter(models.Category.id == category_id)
+        .filter(
+            models.Category.id == category_id,
+            models.Category.user_id == current_user.id
+            )
         .first()
     )
     if category is None:
@@ -69,10 +86,14 @@ def get_category(
 def delete_category(
     category_id: int,
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
 ):
     category = (
         db.query(models.Category)
-        .filter(models.Category.id == category_id)
+        .filter(
+            models.Category.id == category_id,
+            models.Category.user_id == current_user.id
+            )
         .first()
     )
     if category is None:

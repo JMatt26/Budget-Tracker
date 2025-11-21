@@ -9,9 +9,6 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import relationship
-from sqlmodel import null
-
-from app.routers import transactions
 
 from .db import Base
 
@@ -23,7 +20,15 @@ class Category(Base):
     name = Column(String(100), unique=True, index=True, nullable=False)
     type = Column(String(20), nullable=False) # e.g. income or expense
 
-    transactions = relationship("Transaction", back_populates="category")
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user = relationship("User", back_populates="categories")
+
+    transactions = relationship(
+        "Transaction",
+        back_populates="category",
+        cascade="all, delete-orphan",
+    )
+
 
 class Transaction(Base):
     __tablename__ = "transactions"
@@ -41,6 +46,9 @@ class Transaction(Base):
     budget_id = Column(Integer, ForeignKey("budgets.id"), nullable=True)
     budget = relationship("Budget", back_populates="transactions")
 
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user = relationship("User", back_populates="transactions")
+
     type = Column(String(20), nullable=False)
 
     created_at = Column(
@@ -53,6 +61,7 @@ class Transaction(Base):
         nullable=False,
     )
 
+
 class Budget(Base):
     __tablename__ = "budgets"
 
@@ -61,6 +70,9 @@ class Budget(Base):
     limit = Column(Numeric(10, 2), nullable=False)
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
+
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user = relationship("User", back_populates="budgets")
 
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -73,7 +85,12 @@ class Budget(Base):
     )
 
     # one-to-many: a budget can have many transactions
-    transactions = relationship("Transaction", back_populates="budget")
+    transactions = relationship(
+        "Transaction",
+        back_populates="budget",
+        cascade="all, delete-orphan",
+    )
+
 
 class User(Base):
     __tablename__ = "users"
@@ -90,4 +107,20 @@ class User(Base):
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
+    )
+
+    transactions = relationship(
+        "Transaction",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    categories = relationship(
+        "Category",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    budgets = relationship(
+        "Budget",
+        back_populates="user",
+        cascade="all, delete-orphan",
     )

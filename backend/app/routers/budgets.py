@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..db import get_db
+from ..auth import get_current_user
 
 router = APIRouter(prefix="/budgets", tags=["budgets"])
 
@@ -20,8 +21,11 @@ router = APIRouter(prefix="/budgets", tags=["budgets"])
 def create_budget(
     budget_in: schemas.BudgetCreate,
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ):
-    budget = models.Budget(**budget_in.model_dump())
+    budget = models.Budget(
+        **budget_in.model_dump(), user_id=current_user.id
+    )
     db.add(budget)
     db.commit()
     db.refresh(budget)
@@ -31,18 +35,28 @@ def create_budget(
 @router.get("/", response_model=List[schemas.BudgetRead])
 def list_budgets(
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ):
-    return db.query(models.Budget).order_by(models.Budget.start_date.desc()).all()
+    return (
+        db.query(models.Budget)
+        .filter(models.Budget.user_id == current_user.id)
+        .order_by(models.Budget.start_date.desc())
+        .all()
+    )
 
 
 @router.get("/{budget_id}", response_model=schemas.BudgetRead)
 def get_budget(
     budget_id: int,
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
 ):
     budget = (
         db.query(models.Budget)
-        .filter(models.Budget.id == budget_id)
+        .filter(
+            models.Budget.id == budget_id,
+            models.Budget.user_id == current_user.id
+            )
         .first()
     )
     if budget is None:
@@ -57,10 +71,14 @@ def get_budget(
 def get_budget_status(
     budget_id: int,
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
 ):
     budget = (
         db.query(models.Budget)
-        .filter(models.Budget.id == budget_id)
+        .filter(
+            models.Budget.id == budget_id,
+            models.Budget.user_id == current_user.id
+            )
         .first()
     )
     if budget is None:
@@ -74,6 +92,7 @@ def get_budget_status(
         db.query(func.sum(models.Transaction.amount))
         .filter(models.Transaction.type == "expense")
         .filter(models.Transaction.budget_id == budget_id)
+        .filter(models.Transaction.user_id == current_user.id)
         .filter(models.Transaction.date >= budget.start_date)
         .filter(models.Transaction.date <= budget.end_date)
         .scalar()

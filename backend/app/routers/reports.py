@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..db import get_db
+from ..auth import get_current_user
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -16,13 +17,16 @@ def get_summary(
     start_date: date | None = None,
     end_date: date | None = None,
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
 ):
     """
     Returns total income, total expense, and net amount
     over an optional date range.
     """
 
-    base_query = db.query(models.Transaction)
+    base_query = db.query(models.Transaction).filter(
+        models.Transaction.user_id == current_user.id
+    )
 
     if start_date is not None:
         base_query = base_query.filter(models.Transaction.date >= start_date)

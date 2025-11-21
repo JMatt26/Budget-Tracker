@@ -1,12 +1,12 @@
 from datetime import datetime, date
-from typing import Optional
-from pydantic import BaseModel, Field, ConfigDict, EmailStr
+from typing import Optional, List
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, field_serializer
 from decimal import Decimal
 
 
 class CategoryBase(BaseModel):
     name: str = Field(..., max_length=100)
-    type: str = Field(..., pattern="^(income|expense)$")
+    type: Optional[str] = Field(..., pattern="^(income|expense)$")
 
 
 class CategoryCreate(CategoryBase):
@@ -37,6 +37,10 @@ class TransactionRead(TransactionBase):
     created_at: datetime
     updated_at: datetime
     category: Optional[CategoryRead] = None
+
+    @field_serializer("amount")
+    def serialize_amount(self, v: Decimal) -> float:
+        return float(v)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -111,3 +115,21 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     sub: Optional[str] = None  # subject = user email
+
+
+class PaginatedResponseBase(BaseModel):
+    total: int
+    limit: int
+    offset: int
+
+
+class TransactionListResponse(PaginatedResponseBase):
+    items: List[TransactionRead]
+
+
+class BudgetListResponse(PaginatedResponseBase):
+    items: List[BudgetRead]
+
+
+class CategoryListResponse(PaginatedResponseBase):
+    items: List[CategoryRead]

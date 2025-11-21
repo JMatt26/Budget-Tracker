@@ -1,6 +1,6 @@
-from typing import List
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
@@ -43,17 +43,36 @@ def create_category(
     return category
 
 
-
-@router.get("/", response_model=List[schemas.CategoryRead])
+@router.get("/", response_model=schemas.CategoryListResponse)
 def list_categories(
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
+    search: Optional[str] = Query(None)
 ):
-    return (
-        db.query(models.Category)
-        .filter(models.Category.user_id == current_user.id)
-        .order_by(models.Category.name.asc())
+
+    query = db.query(models.Category).filter(
+        models.Category.user_id == current_user.id
+    )
+
+    if search:
+        query = query.filter(models.Category.name.ilike(f"%{search}%"))
+
+    total = query.count()
+
+    items = (
+        query.order_by(models.Category.name.asc())
+        .offset(offset)
+        .limit(limit)
         .all()
+    )
+
+    return schemas.CategoryListResponse(
+        items=items,
+        total=total,
+        limit=limit,
+        offset=offset
     )
 
 

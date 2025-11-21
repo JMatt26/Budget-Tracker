@@ -33,17 +33,24 @@ def test_create_category_duplicate_name_fails(auth_client):
     assert "already exists" in body["detail"]
 
 
+# tests/test_categories.py
 def test_list_categories(auth_client):
-    # Ensure at least one category exists
-    payload = {"name": "Rent", "type": "expense"}
-    auth_client.post("/categories/", json=payload)
+    payload = {"name": "Food", "type": "expense"}
+    create_resp = auth_client.post("/categories", json=payload)
+    assert create_resp.status_code == 201
 
-    resp = auth_client.get("/categories/")
+    resp = auth_client.get("/categories")
     assert resp.status_code == 200
-    items = resp.json()
+    data = resp.json()
 
-    assert isinstance(items, list)
-    assert any(cat["name"] == "Rent" for cat in items)
+    assert "items" in data
+    assert "total" in data
+    assert data["total"] == 1
+    assert len(data["items"]) == 1
+
+    category = data["items"][0]
+    assert category["name"] == "Food"
+
 
 
 def test_get_category_by_id(auth_client):

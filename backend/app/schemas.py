@@ -133,3 +133,7 @@ class BudgetListResponse(PaginatedResponseBase):
 
 class CategoryListResponse(PaginatedResponseBase):
     items: List[CategoryRead]
+
+class ErrorResponse(BaseModel):
+    detail: str
+    code: str | None = None

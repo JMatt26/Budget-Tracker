@@ -43,3 +43,30 @@ def clean_db():
 @pytest.fixture()
 def client():
     return TestClient(app)
+
+@pytest.fixture
+def auth_client(client: TestClient) -> TestClient:
+    """
+    Returns a TestClient with a logged-in user and Authorization header set.
+    """
+    register_payload = {
+        "email": "user@example.com",
+        "password": "testpassword123",
+    }
+    # Ignore if already exists within same test; DB is reset per test anyway
+    client.post("/auth/register", json=register_payload)
+
+    login_data = {
+        "username": "user@example.com",
+        "password": "testpassword123",
+    }
+    resp = client.post(
+        "/auth/login",
+        data=login_data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert resp.status_code == 200, resp.text
+    token = resp.json()["access_token"]
+
+    client.headers.update({"Authorization": f"Bearer {token}"})
+    return client

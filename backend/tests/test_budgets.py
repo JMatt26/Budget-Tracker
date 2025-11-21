@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 
 
-def test_create_budget(client):
+def test_create_budget(auth_client):
     today = date.today()
     payload = {
         "name": "January Budget",
@@ -10,7 +10,7 @@ def test_create_budget(client):
         "end_date": (today + timedelta(days=30)).isoformat(),
     }
 
-    resp = client.post("/budgets/", json=payload)
+    resp = auth_client.post("/budgets/", json=payload)
     assert resp.status_code == 201, resp.text
     data = resp.json()
 
@@ -19,7 +19,7 @@ def test_create_budget(client):
     assert data["limit"] == "1000.00"
 
 
-def test_list_budgets(client):
+def test_list_budgets(auth_client):
     today = date.today()
     payload = {
         "name": "Groceries Budget",
@@ -27,9 +27,9 @@ def test_list_budgets(client):
         "start_date": today.isoformat(),
         "end_date": (today + timedelta(days=30)).isoformat(),
     }
-    client.post("/budgets/", json=payload)
+    auth_client.post("/budgets/", json=payload)
 
-    resp = client.get("/budgets/")
+    resp = auth_client.get("/budgets/")
     assert resp.status_code == 200, resp.text
     items = resp.json()
 
@@ -37,7 +37,7 @@ def test_list_budgets(client):
     assert any(b["name"] == "Groceries Budget" for b in items)
 
 
-def test_get_budget_by_id(client):
+def test_get_budget_by_id(auth_client):
     today = date.today()
     payload = {
         "name": "Rent Budget",
@@ -45,11 +45,11 @@ def test_get_budget_by_id(client):
         "start_date": today.isoformat(),
         "end_date": (today + timedelta(days=30)).isoformat(),
     }
-    create_resp = client.post("/budgets/", json=payload)
+    create_resp = auth_client.post("/budgets/", json=payload)
     assert create_resp.status_code == 201
     budget_id = create_resp.json()["id"]
 
-    get_resp = client.get(f"/budgets/{budget_id}")
+    get_resp = auth_client.get(f"/budgets/{budget_id}")
     assert get_resp.status_code == 200, get_resp.text
     data = get_resp.json()
 
@@ -57,7 +57,7 @@ def test_get_budget_by_id(client):
     assert data["name"] == "Rent Budget"
 
 
-def test_budget_status_tracks_expenses(client):
+def test_budget_status_tracks_expenses(auth_client):
     today = date.today()
     end = today + timedelta(days=30)
 
@@ -68,7 +68,7 @@ def test_budget_status_tracks_expenses(client):
         "start_date": today.isoformat(),
         "end_date": end.isoformat(),
     }
-    budget_resp = client.post("/budgets/", json=budget_payload)
+    budget_resp = auth_client.post("/budgets/", json=budget_payload)
     assert budget_resp.status_code == 201, budget_resp.text
     budget_id = budget_resp.json()["id"]
 
@@ -90,13 +90,13 @@ def test_budget_status_tracks_expenses(client):
         "budget_id": budget_id,
     }
 
-    resp1 = client.post("/transactions/", json=tx1_payload)
-    resp2 = client.post("/transactions/", json=tx2_payload)
+    resp1 = auth_client.post("/transactions/", json=tx1_payload)
+    resp2 = auth_client.post("/transactions/", json=tx2_payload)
     assert resp1.status_code == 201, resp1.text
     assert resp2.status_code == 201, resp2.text
 
     # 3. Check budget status
-    status_resp = client.get(f"/budgets/{budget_id}/status")
+    status_resp = auth_client.get(f"/budgets/{budget_id}/status")
     assert status_resp.status_code == 200, status_resp.text
 
     data = status_resp.json()

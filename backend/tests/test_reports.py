@@ -1,8 +1,8 @@
 from datetime import date
 
 
-def test_summary_no_transactions(client):
-    resp = client.get("/reports/summary")
+def test_summary_no_transactions(auth_client):
+    resp = auth_client.get("/reports/summary")
     assert resp.status_code == 200, resp.text
 
     data = resp.json()
@@ -13,7 +13,7 @@ def test_summary_no_transactions(client):
     assert totals["net"] == "0"
 
 
-def test_summary_with_transactions(client):
+def test_summary_with_transactions(auth_client):
     # Create an income transaction
     income_payload = {
         "amount": "1000.00",
@@ -22,7 +22,7 @@ def test_summary_with_transactions(client):
         "type": "income",
         "category_id": None,
     }
-    resp_income = client.post("/transactions/", json=income_payload)
+    resp_income = auth_client.post("/transactions/", json=income_payload)
     assert resp_income.status_code == 201, resp_income.text
 
     # Create an expense transaction
@@ -33,11 +33,11 @@ def test_summary_with_transactions(client):
         "type": "expense",
         "category_id": None,
     }
-    resp_expense = client.post("/transactions/", json=expense_payload)
+    resp_expense = auth_client.post("/transactions/", json=expense_payload)
     assert resp_expense.status_code == 201, resp_expense.text
 
     # Call summary
-    resp = client.get("/reports/summary")
+    resp = auth_client.get("/reports/summary")
     assert resp.status_code == 200, resp.text
 
     data = resp.json()

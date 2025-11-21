@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -55,6 +55,7 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[models
 
 
 async def get_current_user(
+    request: Request,
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> models.User:
@@ -76,4 +77,7 @@ async def get_current_user(
     user = get_user_by_email(db, token_data.sub) if token_data.sub else None
     if user is None:
         raise credentials_exception
+
+    # expose user id to logging middleware
+    request.state.user_id = user.id
     return user

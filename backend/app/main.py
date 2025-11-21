@@ -3,14 +3,21 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 import logging
+from app.core.logging_config import configure_logging
+from app.middleware.request_logging import RequestLoggingMiddleware
+
 
 from . import schemas
 
 from .routers import transactions, categories, reports, budgets, auth
 
+configure_logging()
+
 app = FastAPI(title="Budet App API", version="0.1.0")
 
-logger = logging.getLogger("budget_app")
+logger = logging.getLogger("app.request")
+
+app.add_middleware(RequestLoggingMiddleware)
 
 @app.get("/health")
 async def health():

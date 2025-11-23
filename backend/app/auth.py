@@ -1,4 +1,4 @@
-# backend/app/auth.py
+import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -8,13 +8,18 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
+
+from app.core.config import get_settings
 from . import models, schemas
-from .config import security_settings
 from .db import get_db
 
-SECRET_KEY = security_settings.secret_key
-ALGORITHM = security_settings.algorithm
-ACCESS_TOKEN_EXPIRE_MINUTES = security_settings.access_token_expire_minutes
+logger = logging.getLogger("app.request")
+
+settings = get_settings()
+
+SECRET_KEY = settings.jwt_secret_key
+ALGORITHM = settings.jwt_algorithm
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.access_token_expire_minutes
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 

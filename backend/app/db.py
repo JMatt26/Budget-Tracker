@@ -1,9 +1,11 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy.pool import StaticPool
 
-# Use SQLite by default (good for dev + tests)
-DATABASE_URL = "sqlite:///./budget.db"
+from app.core.config import get_settings
+
+settings = get_settings()
+
+DATABASE_URL = settings.database_url
 
 engine = create_engine(
     DATABASE_URL,

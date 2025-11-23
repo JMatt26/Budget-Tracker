@@ -1,9 +1,11 @@
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 import logging
 from app.core.logging_config import configure_logging
+from app.core.config import get_settings
 from app.middleware.request_logging import RequestLoggingMiddleware
 
 
@@ -13,11 +15,22 @@ from .routers import transactions, categories, reports, budgets, auth
 
 configure_logging()
 
-app = FastAPI(title="Budet App API", version="0.1.0")
+settings = get_settings()
+
+app = FastAPI(title=settings.app_name, version=settings.app_version)
 
 logger = logging.getLogger("app.request")
 
 app.add_middleware(RequestLoggingMiddleware)
+
+if settings.backend_cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.backend_cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 @app.get("/health")
 async def health():

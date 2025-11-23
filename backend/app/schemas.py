@@ -60,10 +60,18 @@ class SummaryTotals(BaseModel):
     net: Decimal
 
 
+class CategorySummaryItem(BaseModel):
+    category_id: Optional[int] = None
+    category_name: Optional[str] = None
+    total_income: Decimal
+    total_expense: Decimal
+
+
 class SummaryResponse(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     totals: SummaryTotals
+    by_category: Optional[List[CategorySummaryItem]] = None
 
 
 class BudgetBase(BaseModel):
@@ -133,6 +141,7 @@ class BudgetListResponse(PaginatedResponseBase):
 
 class CategoryListResponse(PaginatedResponseBase):
     items: List[CategoryRead]
+
 
 class ErrorResponse(BaseModel):
     detail: str

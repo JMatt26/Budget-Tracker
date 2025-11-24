@@ -4,17 +4,18 @@ import { api } from "../../lib/api";
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 
+
 type SummaryTotals = {
-  total_income: number;
-  total_expense: number;
-  net: number;
+  total_income: number | string;
+  total_expense: number | string;
+  net: number | string;
 };
 
 type CategorySummaryItem = {
   category_id: number | null;
   category_name: string | null;
-  total_income: number;
-  total_expense: number;
+  total_income: number | string;
+  total_expense: number | string;
 };
 
 type SummaryResponse = {
@@ -33,9 +34,9 @@ type Filters = {
   max_amount?: string;
 };
 
-const fetchSummary = async (
-  filters: Filters
-): Promise<SummaryResponse> => {
+// ---- Helpers ----
+
+const fetchSummary = async (filters: Filters): Promise<SummaryResponse> => {
   const params: Record<string, string> = {
     group_by: "category",
   };
@@ -43,11 +44,14 @@ const fetchSummary = async (
     if (v) params[k] = v;
   });
 
-  const { data } = await api.get("/reports/summary", {
+  const { data } = await api.get<SummaryResponse>("/reports/summary", {
     params,
   });
   return data;
 };
+
+const toNumber = (value: number | string | null | undefined): number =>
+  Number(value ?? 0);
 
 export const ReportsPage: React.FC = () => {
   const [filters, setFilters] = useState<Filters>({});
@@ -57,7 +61,7 @@ export const ReportsPage: React.FC = () => {
     queryFn: () => fetchSummary(filters),
   });
 
-  const onFilterChange =
+  const handleFilterChange =
     (field: keyof Filters) =>
     (
       e: React.ChangeEvent<
@@ -70,6 +74,10 @@ export const ReportsPage: React.FC = () => {
         [field]: value || undefined,
       }));
     };
+
+  const handleClearFilters = () => {
+    setFilters({});
+  };
 
   const handleExportCsv = async () => {
     const params: Record<string, string> = {};
@@ -99,9 +107,15 @@ export const ReportsPage: React.FC = () => {
   };
 
   const totals = data?.totals;
+  const byCategory = data?.by_category ?? [];
+
+  const totalIncome = toNumber(totals?.total_income);
+  const totalExpense = toNumber(totals?.total_expense);
+  const net = toNumber(totals?.net);
 
   return (
     <div className="space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-slate-100">
           Reports
@@ -120,9 +134,9 @@ export const ReportsPage: React.FC = () => {
             </label>
             <input
               type="date"
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-sm"
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
               value={filters.start_date ?? ""}
-              onChange={onFilterChange("start_date")}
+              onChange={handleFilterChange("start_date")}
             />
           </div>
           <div>
@@ -131,9 +145,9 @@ export const ReportsPage: React.FC = () => {
             </label>
             <input
               type="date"
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-sm"
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
               value={filters.end_date ?? ""}
-              onChange={onFilterChange("end_date")}
+              onChange={handleFilterChange("end_date")}
             />
           </div>
           <div>
@@ -141,9 +155,9 @@ export const ReportsPage: React.FC = () => {
               Type
             </label>
             <select
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-sm"
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
               value={filters.type ?? ""}
-              onChange={onFilterChange("type")}
+              onChange={handleFilterChange("type")}
             >
               <option value="">All</option>
               <option value="income">Income</option>
@@ -156,9 +170,9 @@ export const ReportsPage: React.FC = () => {
             </label>
             <input
               type="number"
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-sm"
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
               value={filters.min_amount ?? ""}
-              onChange={onFilterChange("min_amount")}
+              onChange={handleFilterChange("min_amount")}
             />
           </div>
           <div>
@@ -167,16 +181,16 @@ export const ReportsPage: React.FC = () => {
             </label>
             <input
               type="number"
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-sm"
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
               value={filters.max_amount ?? ""}
-              onChange={onFilterChange("max_amount")}
+              onChange={handleFilterChange("max_amount")}
             />
           </div>
           <div className="flex items-end">
             <Button
               variant="ghost"
               className="w-full"
-              onClick={() => setFilters({})}
+              onClick={handleClearFilters}
             >
               Clear
             </Button>
@@ -185,7 +199,7 @@ export const ReportsPage: React.FC = () => {
       </Card>
 
       {/* Totals */}
-      {isLoading || !data ? (
+      {isLoading || !totals ? (
         <div className="grid gap-4 md:grid-cols-3">
           <Card className="h-24 animate-pulse bg-slate-900/80" />
           <Card className="h-24 animate-pulse bg-slate-900/80" />
@@ -193,63 +207,68 @@ export const ReportsPage: React.FC = () => {
         </div>
       ) : (
         <>
-          {totals && (
-            <div className="grid gap-4 md:grid-cols-3">
-              <Card>
-                <p className="text-xs uppercase tracking-wide text-slate-400">
-                  Income
-                </p>
-                <p className="mt-2 text-2xl font-semibold text-emerald-400">
-                  ${totals.total_income.toFixed(2)}
-                </p>
-              </Card>
-              <Card>
-                <p className="text-xs uppercase tracking-wide text-slate-400">
-                  Expenses
-                </p>
-                <p className="mt-2 text-2xl font-semibold text-rose-400">
-                  ${totals.total_expense.toFixed(2)}
-                </p>
-              </Card>
-              <Card>
-                <p className="text-xs uppercase tracking-wide text-slate-400">
-                  Net
-                </p>
-                <p
-                  className={`mt-2 text-2xl font-semibold ${
-                    totals.net >= 0
-                      ? "text-emerald-400"
-                      : "text-rose-400"
-                  }`}
-                >
-                  ${totals.net.toFixed(2)}
-                </p>
-              </Card>
-            </div>
-          )}
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card>
+              <p className="text-xs uppercase tracking-wide text-slate-400">
+                Income
+              </p>
+              <p className="mt-2 text-2xl font-semibold text-emerald-400">
+                ${totalIncome.toFixed(2)}
+              </p>
+            </Card>
+            <Card>
+              <p className="text-xs uppercase tracking-wide text-slate-400">
+                Expenses
+              </p>
+              <p className="mt-2 text-2xl font-semibold text-rose-400">
+                ${totalExpense.toFixed(2)}
+              </p>
+            </Card>
+            <Card>
+              <p className="text-xs uppercase tracking-wide text-slate-400">
+                Net
+              </p>
+              <p
+                className={`mt-2 text-2xl font-semibold ${
+                  net >= 0 ? "text-emerald-400" : "text-rose-400"
+                }`}
+              >
+                ${net.toFixed(2)}
+              </p>
+            </Card>
+          </div>
 
           {/* By category */}
-          {data.by_category && data.by_category.length > 0 && (
+          {byCategory && byCategory.length > 0 && (
             <Card>
               <h3 className="mb-3 text-sm font-medium text-slate-100">
                 By category
               </h3>
               <div className="space-y-2 text-sm">
-                {data.by_category.map((item) => (
-                  <div
-                    key={item.category_id ?? item.category_name}
-                    className="flex items-center justify-between"
-                  >
-                    <span>
-                      {item.category_name ?? "Uncategorized"}
-                    </span>
-                    <span className="text-slate-300">
-                      +$
-                      {item.total_income.toFixed(2)} / -$
-                      {item.total_expense.toFixed(2)}
-                    </span>
-                  </div>
-                ))}
+                {byCategory.map((item) => {
+                  const income = toNumber(
+                    item.total_income
+                  );
+                  const expense = toNumber(
+                    item.total_expense
+                  );
+                  return (
+                    <div
+                      key={
+                        item.category_id ?? item.category_name ?? Math.random()
+                      }
+                      className="flex items-center justify-between"
+                    >
+                      <span>
+                        {item.category_name ?? "Uncategorized"}
+                      </span>
+                      <span className="text-slate-300">
+                        +${income.toFixed(2)} / -$
+                        {expense.toFixed(2)}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </Card>
           )}

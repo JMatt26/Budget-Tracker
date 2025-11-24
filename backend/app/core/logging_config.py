@@ -15,6 +15,13 @@ class JsonFormatter(logging.Formatter):
             "message": record.getMessage(),
         }
 
+        # Include exception information if present
+        if record.exc_info:
+            import traceback
+            log_record["exception"] = traceback.format_exception(*record.exc_info)
+        if record.exc_text:
+            log_record["exc_text"] = record.exc_text
+
         # Include extra attributes (those not part of the standard LogRecord)
         standard_attrs = {
             "name",

@@ -19,6 +19,13 @@ settings = get_settings()
 
 app = FastAPI(title=settings.app_name, version=settings.app_version)
 
+# Initialize database tables on startup
+@app.on_event("startup")
+def create_tables():
+    from app.db import engine, Base
+    from app import models
+    Base.metadata.create_all(bind=engine)
+
 logger = logging.getLogger("app.request")
 
 app.add_middleware(RequestLoggingMiddleware)

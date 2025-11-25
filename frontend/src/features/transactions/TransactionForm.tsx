@@ -62,10 +62,16 @@ export const TransactionForm = ({
     register,
     formState: { errors, isSubmitting },
     setValue,
+    watch,
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues,
   });
+
+  const descriptionValue = watch("description") ?? "";
+  const descriptionLength = descriptionValue.length;
+  const maxLength = 255;
+  const isAtMaxLength = descriptionLength >= maxLength;
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
@@ -185,9 +191,19 @@ export const TransactionForm = ({
             </label>
             <input
               type="text"
+              maxLength={maxLength}
               className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
               {...register("description")}
             />
+            <div className="mt-1 flex justify-end">
+              <span
+                className={`text-xs ${
+                  isAtMaxLength ? "text-red-400" : "text-slate-400"
+                }`}
+              >
+                {descriptionLength}/{maxLength}
+              </span>
+            </div>
           </div>
 
           <div className="flex justify-end gap-2">

@@ -19,7 +19,8 @@ const schema = z.object({
     .transform((val) => (val ? Number(val) : undefined)),
 });
 
-type FormValues = z.infer<typeof schema>;
+type FormValues = z.input<typeof schema>;
+type FormValuesOutput = z.infer<typeof schema>;
 
 const fetchCategories = async (): Promise<Category[]> => {
   const { data } = await api.get("/categories", {
@@ -49,7 +50,7 @@ export const TransactionForm = ({
       amount: transaction.amount,
       description: transaction.description ?? "",
       type: transaction.type,
-      category_id: transaction.category_id ?? undefined, // ✅ number or undefined
+      category_id: transaction.category_id ? String(transaction.category_id) : undefined, // Convert number to string for form
     }
   : {
       date: new Date().toISOString().slice(0, 10),
@@ -61,7 +62,6 @@ export const TransactionForm = ({
     handleSubmit,
     register,
     formState: { errors, isSubmitting },
-    setValue,
     watch,
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -75,12 +75,27 @@ export const TransactionForm = ({
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
-      const payload = {
-        ...values,
-        amount: Number(values.amount),
+      // zodResolver applies the transform, so values are already transformed
+      const transformedValues = values as FormValuesOutput;
+      
+      // Build payload - ensure proper types and convert empty strings to null
+      const payload: any = {
+        date: transformedValues.date,
+        amount: Number(transformedValues.amount),
+        type: transformedValues.type,
       };
+      
+      // Convert empty description to null (Pydantic expects null, not empty string for optional fields)
+      const description = transformedValues.description?.trim();
+      payload.description = description && description !== "" ? description : null;
+      
+      // Include category_id only if it's defined (not undefined)
+      if (transformedValues.category_id !== undefined) {
+        payload.category_id = transformedValues.category_id ?? null;
+      }
+      
       if (transaction) {
-        const { data } = await api.patch(
+        const { data } = await api.put(
           `/transactions/${transaction.id}`,
           payload
         );
@@ -172,9 +187,7 @@ export const TransactionForm = ({
             </label>
             <select
               className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-sm"
-              {...register("category_id", {
-                setValueAs: (v) => (v === "" ? undefined : Number(v)),
-              })}
+              {...register("category_id")}
             >
               <option value="">None</option>
               {categories?.map((c) => (

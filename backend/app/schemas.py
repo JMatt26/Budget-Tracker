@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime, date as DateType
 from typing import Optional, List
 from pydantic import BaseModel, Field, ConfigDict, EmailStr, field_serializer
 from decimal import Decimal
@@ -22,7 +22,7 @@ class CategoryRead(CategoryBase):
 class TransactionBase(BaseModel):
     amount: Decimal = Field(..., max_digits=10, decimal_places=2)
     description: Optional[str] = Field(None, max_length=255)
-    date: date
+    date: DateType
     type: str = Field(..., pattern="^(income|expense)$")
     category_id: Optional[int] = None
     budget_id: Optional[int] = None
@@ -48,7 +48,7 @@ class TransactionRead(TransactionBase):
 class TransactionUpdate(BaseModel):
     amount: Optional[Decimal] = Field(None, max_digits=10, decimal_places=2)
     description: Optional[str] = Field(None, max_length=255)
-    date: Optional[date] = None
+    date: Optional[DateType] = None
     type: Optional[str] = Field(None, pattern="^(income|expense)$")
     category_id: Optional[int] = None
     budget_id: Optional[int] = None
@@ -68,8 +68,8 @@ class CategorySummaryItem(BaseModel):
 
 
 class SummaryResponse(BaseModel):
-    start_date: date | None = None
-    end_date: date | None = None
+    start_date: DateType | None = None
+    end_date: DateType | None = None
     totals: SummaryTotals
     by_category: Optional[List[CategorySummaryItem]] = None
 
@@ -77,8 +77,8 @@ class SummaryResponse(BaseModel):
 class BudgetBase(BaseModel):
     name: str = Field(..., max_length=100)
     limit: Decimal = Field(..., max_digits=10, decimal_places=2)
-    start_date: date
-    end_date: date
+    start_date: DateType
+    end_date: DateType
 
 
 class BudgetCreate(BudgetBase):

@@ -23,32 +23,32 @@ type Filters = {
     offset: number;
   };
   
-  const fetchTransactions = async (
-    filters: Filters
-  ): Promise<TransactionListResponse> => {
-    const params: Record<string, string> = {};
+const fetchTransactions = async (
+  filters: Filters
+): Promise<TransactionListResponse> => {
+  const params: Record<string, string> = {};
+
+  Object.entries(filters).forEach(([key, value]) => {
+    if (!value) return;
+    params[key] = value;
+  });
   
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value) {
-        params[key] = value;
-      }
-    });
-  
-    const { data } = await api.get<TransactionListResponse>(
-      "/transactions",
-      { params }
-    );
-    return data;
-  };
+  const { data } = await api.get<TransactionListResponse>(
+    "/transactions",
+    { params }
+  );
+  return data;
+};
   
   const formatCurrency = (amount: number) =>
     `$${Number(amount ?? 0).toFixed(2)}`;
   
-  const formatDate = (iso: string) => {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return iso;
-    return d.toLocaleDateString();
-  };
+const formatDate = (iso: string) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, { timeZone: "UTC" });
+};
   
   export const TransactionsPage: React.FC = () => {
     const [filters, setFilters] = useState<Filters>({});
@@ -118,6 +118,14 @@ type Filters = {
       <div className="space-y-4">
         {/* Filters */}
         <Card>
+          <div className="mb-4">
+            <h2 className="text-sm font-semibold text-slate-100">
+              Filters
+            </h2>
+            <p className="text-xs text-slate-500">
+              Refine the list by date range, type, or amount.
+            </p>
+          </div>
           <div className="flex flex-wrap items-end gap-3">
             <div>
               <label className="mb-1 block text-xs text-slate-400">
@@ -177,16 +185,12 @@ type Filters = {
                 onChange={handleFilterChange("max_amount")}
               />
             </div>
-  
-            <div className="ml-auto flex gap-2">
+            <div className="ml-auto">
               <Button
                 variant="ghost"
                 onClick={handleClearFilters}
               >
                 Clear
-              </Button>
-              <Button onClick={handleAddClick}>
-                + Add
               </Button>
             </div>
           </div>
@@ -310,6 +314,15 @@ type Filters = {
             onClose={handleCloseForm}
           />
         )}
+
+        <div className="sticky bottom-4 flex justify-end">
+          <Button
+            className="shadow-lg shadow-sky-500/20"
+            onClick={handleAddClick}
+          >
+            + Add
+          </Button>
+        </div>
       </div>
     );
   };

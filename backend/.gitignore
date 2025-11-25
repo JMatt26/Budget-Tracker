@@ -1,3 +1,11 @@
 .env
+.venv
 
 sql_app.db
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+
+.pytest_cache

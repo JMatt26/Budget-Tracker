@@ -238,10 +238,10 @@ type Filters = {
                     <th className="py-2 text-left">
                       Description
                     </th>
-                    <th className="py-2 text-right">
+                    <th className="py-2 pr-4 text-right">
                       Amount
                     </th>
-                    <th className="py-2 text-left">Type</th>
+                    <th className="py-2 pl-4 text-left">Type</th>
                     <th className="py-2 text-left">
                       Category
                     </th>
@@ -261,7 +261,7 @@ type Filters = {
                         {tx.description ?? "—"}
                       </td>
                       <td
-                        className={`py-2 text-right ${
+                        className={`py-2 pr-4 text-right ${
                           tx.type === "income"
                             ? "text-emerald-400"
                             : "text-rose-400"
@@ -270,7 +270,7 @@ type Filters = {
                         {tx.type === "expense" ? "-" : "+"}
                         {formatCurrency(tx.amount)}
                       </td>
-                      <td className="py-2 capitalize">
+                      <td className="py-2 pl-4 capitalize">
                         {tx.type}
                       </td>
                       <td className="py-2">

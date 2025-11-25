@@ -23,32 +23,32 @@ type Filters = {
     offset: number;
   };
   
-  const fetchTransactions = async (
-    filters: Filters
-  ): Promise<TransactionListResponse> => {
-    const params: Record<string, string> = {};
+const fetchTransactions = async (
+  filters: Filters
+): Promise<TransactionListResponse> => {
+  const params: Record<string, string> = {};
+
+  Object.entries(filters).forEach(([key, value]) => {
+    if (!value) return;
+    params[key] = value;
+  });
   
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value) {
-        params[key] = value;
-      }
-    });
-  
-    const { data } = await api.get<TransactionListResponse>(
-      "/transactions",
-      { params }
-    );
-    return data;
-  };
+  const { data } = await api.get<TransactionListResponse>(
+    "/transactions",
+    { params }
+  );
+  return data;
+};
   
   const formatCurrency = (amount: number) =>
     `$${Number(amount ?? 0).toFixed(2)}`;
   
-  const formatDate = (iso: string) => {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return iso;
-    return d.toLocaleDateString();
-  };
+const formatDate = (iso: string) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, { timeZone: "UTC" });
+};
   
   export const TransactionsPage: React.FC = () => {
     const [filters, setFilters] = useState<Filters>({});

@@ -28,10 +28,11 @@ The app provides users with the ability to:
 ## Running the Backend (Dev)
 
 1. ```cd backend```
-2. Create and activate your virtual environment, ```source .venv/bin/activate```
-3. Install dependencies: `pip install -r requirements.txt`
-4. Ensure your `.env` file is set up with proper variables.
-5. Start the app:
+2. Create virtual environment, `python -m venv .venv`
+3. Activate your virtual environment, ```source .venv/bin/activate```
+4. Install dependencies: `pip install -r requirements.txt`
+5. Ensure your `.env` file is set up with proper variables.
+6. Start the app:
    ```bash
    uvicorn app.main:app --reload
    ```

@@ -118,6 +118,14 @@ type Filters = {
       <div className="space-y-4">
         {/* Filters */}
         <Card>
+          <div className="mb-4">
+            <h2 className="text-sm font-semibold text-slate-100">
+              Filters
+            </h2>
+            <p className="text-xs text-slate-500">
+              Refine the list by date range, type, or amount.
+            </p>
+          </div>
           <div className="flex flex-wrap items-end gap-3">
             <div>
               <label className="mb-1 block text-xs text-slate-400">
@@ -177,16 +185,12 @@ type Filters = {
                 onChange={handleFilterChange("max_amount")}
               />
             </div>
-  
-            <div className="ml-auto flex gap-2">
+            <div className="ml-auto">
               <Button
                 variant="ghost"
                 onClick={handleClearFilters}
               >
                 Clear
-              </Button>
-              <Button onClick={handleAddClick}>
-                + Add
               </Button>
             </div>
           </div>
@@ -310,6 +314,15 @@ type Filters = {
             onClose={handleCloseForm}
           />
         )}
+
+        <div className="sticky bottom-4 flex justify-end">
+          <Button
+            className="shadow-lg shadow-sky-500/20"
+            onClick={handleAddClick}
+          >
+            + Add
+          </Button>
+        </div>
       </div>
     );
   };

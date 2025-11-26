@@ -29,7 +29,7 @@ const fetchCategories = async (
 
 type CategoryFormData = {
   name: string;
-  type: "income" | "expense";
+  type: "income" | "expense" | "investment";
 };
 
 const CategoryForm = ({
@@ -125,13 +125,14 @@ const CategoryForm = ({
               onChange={(e) =>
                 setFormData({
                   ...formData,
-                  type: e.target.value as "income" | "expense",
+                  type: e.target.value as "income" | "expense" | "investment",
                 })
               }
               className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
             >
               <option value="expense">Expense</option>
               <option value="income">Income</option>
+              <option value="investment">Investment</option>
             </select>
           </div>
 
@@ -289,6 +290,8 @@ export const CategoriesPage: React.FC = () => {
                       className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${
                         cat.type === "income"
                           ? "bg-green-500/20 text-green-400"
+                          : cat.type === "investment"
+                          ? "bg-blue-500/20 text-blue-400"
                           : "bg-red-500/20 text-red-400"
                       }`}
                     >

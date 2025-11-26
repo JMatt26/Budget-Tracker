@@ -39,8 +39,9 @@ def get_summary(
     if end_date is not None:
         base_query = base_query.filter(models.Transaction.date <= end_date)
 
-    # Totals for income + expense
+    # Totals for income + investment + expense
     income_q = base_query.filter(models.Transaction.type == "income")
+    investment_q = base_query.filter(models.Transaction.type == "investment")
     expense_q = base_query.filter(models.Transaction.type == "expense")
 
     total_income = income_q.with_entities(
@@ -51,7 +52,11 @@ def get_summary(
         func.coalesce(func.sum(models.Transaction.amount), 0)
     ).scalar() or Decimal("0")
 
-    net = total_income - total_expense
+    total_investment = investment_q.with_entities(
+        func.coalesce(func.sum(models.Transaction.amount), 0)
+    ).scalar() or Decimal("0")
+
+    net = total_income + total_investment - total_expense
 
     by_category: Optional[list[schemas.CategorySummaryItem]] = None
 
@@ -70,6 +75,15 @@ def get_summary(
                     ),
                     0,
                 ).label("total_income"),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (models.Transaction.type == "investment", models.Transaction.amount),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ).label("total_investment"),
                 func.coalesce(
                     func.sum(
                         case(
@@ -103,6 +117,7 @@ def get_summary(
                 category_id=row.category_id,
                 category_name=row.name,
                 total_income=row.total_income or Decimal("0"),
+                total_investment=row.total_investment or Decimal("0"),
                 total_expense=row.total_expense or Decimal("0"),
             )
             for row in results
@@ -113,6 +128,7 @@ def get_summary(
         end_date=end_date,
         totals=schemas.SummaryTotals(
             total_income=total_income,
+            total_investment=total_investment,
             total_expense=total_expense,
             net=net,
         ),
@@ -126,7 +142,7 @@ def export_transactions_csv(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     category_id: Optional[int] = Query(None),
-    type: Optional[Literal["income", "expense"]] = Query(None),
+    type: Optional[Literal["income", "expense", "investment"]] = Query(None),
     min_amount: Optional[float] = Query(None),
     max_amount: Optional[float] = Query(None),
     db: Session = Depends(get_db),

@@ -7,6 +7,7 @@ import { Button } from "../../components/ui/Button";
 
 type SummaryTotals = {
   total_income: number | string;
+  total_investment: number | string;
   total_expense: number | string;
   net: number | string;
 };
@@ -15,6 +16,7 @@ type CategorySummaryItem = {
   category_id: number | null;
   category_name: string | null;
   total_income: number | string;
+  total_investment: number | string;
   total_expense: number | string;
 };
 
@@ -28,7 +30,7 @@ type SummaryResponse = {
 type Filters = {
   start_date?: string;
   end_date?: string;
-  type?: "income" | "expense" | "";
+  type?: "income" | "expense" | "investment" | "";
   category_id?: string;
   min_amount?: string;
   max_amount?: string;
@@ -110,6 +112,7 @@ export const ReportsPage: React.FC = () => {
   const byCategory = data?.by_category ?? [];
 
   const totalIncome = toNumber(totals?.total_income);
+  const totalInvestment = toNumber(totals?.total_investment);
   const totalExpense = toNumber(totals?.total_expense);
   const net = toNumber(totals?.net);
 
@@ -162,6 +165,7 @@ export const ReportsPage: React.FC = () => {
               <option value="">All</option>
               <option value="income">Income</option>
               <option value="expense">Expense</option>
+              <option value="investment">Investment</option>
             </select>
           </div>
           <div>
@@ -207,13 +211,21 @@ export const ReportsPage: React.FC = () => {
         </div>
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-4">
             <Card>
               <p className="text-xs uppercase tracking-wide text-slate-400">
                 Income
               </p>
               <p className="mt-2 text-2xl font-semibold text-emerald-400">
                 ${totalIncome.toFixed(2)}
+              </p>
+            </Card>
+            <Card>
+              <p className="text-xs uppercase tracking-wide text-slate-400">
+                Investments
+              </p>
+              <p className="mt-2 text-2xl font-semibold text-blue-400">
+                ${totalInvestment.toFixed(2)}
               </p>
             </Card>
             <Card>
@@ -246,12 +258,9 @@ export const ReportsPage: React.FC = () => {
               </h3>
               <div className="space-y-2 text-sm">
                 {byCategory.map((item) => {
-                  const income = toNumber(
-                    item.total_income
-                  );
-                  const expense = toNumber(
-                    item.total_expense
-                  );
+                  const income = toNumber(item.total_income);
+                  const investment = toNumber(item.total_investment);
+                  const expense = toNumber(item.total_expense);
                   return (
                     <div
                       key={
@@ -263,8 +272,11 @@ export const ReportsPage: React.FC = () => {
                         {item.category_name ?? "Uncategorized"}
                       </span>
                       <span className="text-slate-300">
-                        +${income.toFixed(2)} / -$
-                        {expense.toFixed(2)}
+                        +${income.toFixed(2)}
+                        {" "}
+                        +${investment.toFixed(2)}
+                        {" "}
+                        / -${expense.toFixed(2)}
                       </span>
                     </div>
                   );

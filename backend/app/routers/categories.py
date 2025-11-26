@@ -57,7 +57,8 @@ def list_categories(
     )
 
     if search:
-        query = query.filter(models.Category.name.ilike(f"%{search}%"))
+        # Match category names that start with the search term (case-insensitive)
+        query = query.filter(models.Category.name.ilike(f"{search}%"))
 
     total = query.count()
 
@@ -95,6 +96,54 @@ def get_category(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Category not found.",
         )
+    return category
+
+
+@router.put("/{category_id}", response_model=schemas.CategoryRead)
+def update_category(
+    category_id: int,
+    category_update: schemas.CategoryUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    category = (
+        db.query(models.Category)
+        .filter(
+            models.Category.id == category_id,
+            models.Category.user_id == current_user.id
+        )
+        .first()
+    )
+    if category is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Category not found.",
+        )
+
+    update_data = category_update.model_dump(exclude_unset=True)
+
+    # Check for duplicate name if name is being updated
+    if "name" in update_data:
+        existing = (
+            db.query(models.Category)
+            .filter(
+                models.Category.user_id == current_user.id,
+                models.Category.name == update_data["name"],
+                models.Category.id != category_id,
+            )
+            .first()
+        )
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Category with this name already exists.",
+            )
+
+    for field, value in update_data.items():
+        setattr(category, field, value)
+
+    db.commit()
+    db.refresh(category)
     return category
 
 

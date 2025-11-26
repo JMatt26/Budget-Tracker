@@ -19,6 +19,11 @@ class CategoryRead(CategoryBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class CategoryUpdate(BaseModel):
+    name: Optional[str] = Field(None, max_length=100)
+    type: Optional[str] = Field(None, pattern="^(income|expense)$")
+
+
 class TransactionBase(BaseModel):
     amount: Decimal = Field(..., max_digits=10, decimal_places=2)
     description: Optional[str] = Field(None, max_length=255)

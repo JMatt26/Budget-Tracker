@@ -89,9 +89,12 @@ export const TransactionForm = ({
       const description = transformedValues.description?.trim();
       payload.description = description && description !== "" ? description : null;
       
-      // Include category_id only if it's defined (not undefined)
-      if (transformedValues.category_id !== undefined) {
+      // For updates, always include category_id (even if null) to allow clearing the category
+      // For creates, only include if it has a value
+      if (transaction) {
         payload.category_id = transformedValues.category_id ?? null;
+      } else if (transformedValues.category_id !== undefined) {
+        payload.category_id = transformedValues.category_id;
       }
       
       if (transaction) {

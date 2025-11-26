@@ -10,7 +10,7 @@ import React from "react";
 type Filters = {
     start_date?: string;
     end_date?: string;
-    type?: "income" | "expense" | "";
+    type?: "income" | "expense" | "investment" | "";
     category_id?: string;
     min_amount?: string;
     max_amount?: string;
@@ -161,6 +161,7 @@ const formatDate = (iso: string) => {
                 <option value="">All</option>
                 <option value="income">Income</option>
                 <option value="expense">Expense</option>
+                <option value="investment">Investment</option>
               </select>
             </div>
             <div>
@@ -268,6 +269,8 @@ const formatDate = (iso: string) => {
                         className={`py-2 pr-4 text-right ${
                           tx.type === "income"
                             ? "text-emerald-400"
+                            : tx.type === "investment"
+                            ? "text-blue-400"
                             : "text-rose-400"
                         }`}
                       >

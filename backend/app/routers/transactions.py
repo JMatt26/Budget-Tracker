@@ -54,7 +54,7 @@ def list_transactions(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     category_id: Optional[int] = Query(None),
-    type: Optional[Literal["income", "expense"]] = Query(None),
+    type: Optional[Literal["income", "expense", "investment"]] = Query(None),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
     min_amount: Optional[float] = Query(None),

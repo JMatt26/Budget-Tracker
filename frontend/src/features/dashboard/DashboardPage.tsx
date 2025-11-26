@@ -22,6 +22,7 @@ type NewSummary = {
   totals: {
     total_income?: number;
     total_expense?: number;
+    total_investment?: number;
     net?: number;
   };
   by_category?: {
@@ -64,6 +65,9 @@ export const DashboardPage = () => {
     legacySummary.total_income ??
     0;
 
+  const total_investment_raw =
+    summaryWithTotals.totals?.total_investment ?? 0;
+
   const total_expense_raw =
     summaryWithTotals.totals?.total_expense ??
     legacySummary.total_expense ??
@@ -72,10 +76,11 @@ export const DashboardPage = () => {
   const net_raw =
     summaryWithTotals.totals?.net ??
     legacySummary.net ??
-    (total_income_raw - total_expense_raw);
+    (total_income_raw + total_investment_raw - total_expense_raw);
 
   // 👇 Safely convert to numbers so .toFixed never explodes
   const total_income = Number(total_income_raw ?? 0);
+  const total_investment = Number(total_investment_raw ?? 0);
   const total_expense = Number(total_expense_raw ?? 0);
   const net = Number(net_raw ?? 0);
 
@@ -83,13 +88,21 @@ export const DashboardPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <p className="text-xs uppercase tracking-wide text-slate-400">
             Income
           </p>
           <p className="mt-2 text-2xl font-semibold text-emerald-400">
             ${total_income.toFixed(2)}
+          </p>
+        </Card>
+        <Card>
+          <p className="text-xs uppercase tracking-wide text-slate-400">
+            Investments
+          </p>
+          <p className="mt-2 text-2xl font-semibold text-blue-400">
+            ${total_investment.toFixed(2)}
           </p>
         </Card>
         <Card>

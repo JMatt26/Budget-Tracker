@@ -6,7 +6,7 @@ from decimal import Decimal
 
 class CategoryBase(BaseModel):
     name: str = Field(..., max_length=100)
-    type: Optional[str] = Field(..., pattern="^(income|expense)$")
+    type: Optional[str] = Field(..., pattern="^(income|expense|investment)$")
 
 
 class CategoryCreate(CategoryBase):
@@ -21,14 +21,14 @@ class CategoryRead(CategoryBase):
 
 class CategoryUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=100)
-    type: Optional[str] = Field(None, pattern="^(income|expense)$")
+    type: Optional[str] = Field(None, pattern="^(income|expense|investment)$")
 
 
 class TransactionBase(BaseModel):
     amount: Decimal = Field(..., max_digits=10, decimal_places=2)
     description: Optional[str] = Field(None, max_length=255)
     date: DateType
-    type: str = Field(..., pattern="^(income|expense)$")
+    type: str = Field(..., pattern="^(income|expense|investment)$")
     category_id: Optional[int] = None
     budget_id: Optional[int] = None
 
@@ -54,13 +54,14 @@ class TransactionUpdate(BaseModel):
     amount: Optional[Decimal] = Field(None, max_digits=10, decimal_places=2)
     description: Optional[str] = Field(None, max_length=255)
     date: Optional[DateType] = None
-    type: Optional[str] = Field(None, pattern="^(income|expense)$")
+    type: Optional[str] = Field(None, pattern="^(income|expense|investment)$")
     category_id: Optional[int] = None
     budget_id: Optional[int] = None
 
 
 class SummaryTotals(BaseModel):
     total_income: Decimal
+    total_investment: Decimal
     total_expense: Decimal
     net: Decimal
 
@@ -69,6 +70,7 @@ class CategorySummaryItem(BaseModel):
     category_id: Optional[int] = None
     category_name: Optional[str] = None
     total_income: Decimal
+    total_investment: Decimal
     total_expense: Decimal
 
 

@@ -12,7 +12,7 @@ const schema = z.object({
   date: z.string(),
   amount: z.number().positive(),
   description: z.string().optional(),
-  type: z.enum(["income", "expense"]),
+  type: z.enum(["income", "expense", "investment"]),
   category_id: z
     .string()
     .optional()
@@ -176,6 +176,7 @@ export const TransactionForm = ({
             >
               <option value="expense">Expense</option>
               <option value="income">Income</option>
+              <option value="investment">Investment</option>
             </select>
             {errors.type && (
               <p className="mt-1 text-xs text-red-400">

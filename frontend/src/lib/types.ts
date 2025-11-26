@@ -16,6 +16,8 @@ export interface Transaction {
   type: TransactionType;
   category_id?: number | null;
   category?: Category | null;
+  budget_id?: number | null;
+  budget?: Budget | null;
   created_at?: string;
 }
 

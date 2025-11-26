@@ -2,11 +2,12 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Transaction, Category } from "../../lib/types";
+import type { Transaction, Category, Budget } from "../../lib/types";
 import { api } from "../../lib/api";
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import React from "react";
+import { fetchBudgets } from "../../lib/budget-api";
 
 const schema = z.object({
   date: z.string(),
@@ -14,6 +15,10 @@ const schema = z.object({
   description: z.string().optional(),
   type: z.enum(["income", "expense", "investment"]),
   category_id: z
+    .string()
+    .optional()
+    .transform((val) => (val ? Number(val) : undefined)),
+  budget_id: z
     .string()
     .optional()
     .transform((val) => (val ? Number(val) : undefined)),
@@ -26,8 +31,7 @@ const fetchCategories = async (): Promise<Category[]> => {
   const { data } = await api.get("/categories", {
     params: { limit: 100, offset: 0 },
   });
-  // adjust based on schemas.CategoryListResponse shape
-  return data.items ?? data; // if your response wraps items
+  return data.items ?? data;
 };
 
 export const TransactionForm = ({
@@ -43,6 +47,10 @@ export const TransactionForm = ({
     queryKey: ["categories"],
     queryFn: fetchCategories,
   });
+  const { data: budgets } = useQuery({
+    queryKey: ["budgets", "for-form"],
+    queryFn: fetchBudgets,
+  });
 
   const defaultValues: Partial<FormValues> = transaction
   ? {
@@ -50,7 +58,8 @@ export const TransactionForm = ({
       amount: transaction.amount,
       description: transaction.description ?? "",
       type: transaction.type,
-      category_id: transaction.category_id ? String(transaction.category_id) : undefined, // Convert number to string for form
+      category_id: transaction.category_id ? String(transaction.category_id) : undefined,
+      budget_id: transaction.budget_id ? String(transaction.budget_id) : undefined,
     }
   : {
       date: new Date().toISOString().slice(0, 10),
@@ -96,6 +105,9 @@ export const TransactionForm = ({
       } else if (transformedValues.category_id !== undefined) {
         payload.category_id = transformedValues.category_id;
       }
+
+      // Always send budget_id (null clears it)
+      payload.budget_id = transformedValues.budget_id ?? null;
       
       if (transaction) {
         const { data } = await api.put(
@@ -197,6 +209,23 @@ export const TransactionForm = ({
               {categories?.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-slate-400">
+              Budget
+            </label>
+            <select
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-sm"
+              {...register("budget_id")}
+            >
+              <option value="">None</option>
+              {budgets?.items.map((b: Budget) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
                 </option>
               ))}
             </select>

@@ -1,50 +1,10 @@
-import React from "react";
-import { useQuery } from "@tanstack/react-query";
+import React, { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
-
-type Budget = {
-  id: number;
-  name: string;
-  // your backend uses "limit" in BudgetStatus calculations
-  limit: number;
-  start_date?: string | null;
-  end_date?: string | null;
-  // optional category relationship
-  category?: {
-    id: number;
-    name: string;
-  } | null;
-};
-
-type BudgetListResponse = {
-  items: Budget[];
-  total: number;
-  limit: number;
-  offset: number;
-};
-
-type BudgetStatus = {
-  budget: Budget;
-  total_expense: number;
-  remaining: number;
-  exceeded: boolean;
-};
-
-const fetchBudgets = async (): Promise<BudgetListResponse> => {
-  const { data } = await api.get("/budgets", {
-    params: { limit: 50, offset: 0 },
-  });
-  return data;
-};
-
-const fetchBudgetStatus = async (
-  id: number
-): Promise<BudgetStatus> => {
-  const { data } = await api.get(`/budgets/${id}/status`);
-  return data;
-};
+import type { Budget, BudgetStatus } from "../../lib/types";
+import { fetchBudgets, fetchBudgetStatus } from "../../lib/budget-api";
 
 const BudgetStatusCard = ({ budget }: { budget: Budget }) => {
   const { data, isLoading } = useQuery({
@@ -52,7 +12,7 @@ const BudgetStatusCard = ({ budget }: { budget: Budget }) => {
     queryFn: () => fetchBudgetStatus(budget.id),
   });
 
-  const limit = budget.limit ?? 0;
+  const limit = Number(budget.limit ?? 0);
   const spent = data?.total_expense ?? 0;
   const remaining = data?.remaining ?? 0;
   const exceeded = data?.exceeded ?? false;
@@ -118,7 +78,157 @@ const BudgetStatusCard = ({ budget }: { budget: Budget }) => {
   );
 };
 
+const BudgetForm = ({ onClose }: { onClose: () => void }) => {
+  const queryClient = useQueryClient();
+  const [formData, setFormData] = useState({
+    name: "",
+    limit: "",
+    startDate: "",
+    endDate: "",
+  });
+  const [error, setError] = useState<string | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        name: formData.name.trim(),
+        limit: Number(formData.limit),
+        start_date: formData.startDate,
+        end_date: formData.endDate,
+      };
+      const { data } = await api.post("/budgets", payload);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["budgets"] });
+      onClose();
+    },
+    onError: (err: any) => {
+      setError(err.response?.data?.detail || "Unable to create budget.");
+    },
+  });
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+
+    if (!formData.name.trim()) {
+      setError("Name is required.");
+      return;
+    }
+    if (!formData.limit || Number(formData.limit) <= 0) {
+      setError("Limit must be greater than 0.");
+      return;
+    }
+    if (!formData.startDate || !formData.endDate) {
+      setError("Start and end dates are required.");
+      return;
+    }
+    if (formData.startDate > formData.endDate) {
+      setError("End date must be after start date.");
+      return;
+    }
+
+    mutation.mutate();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <Card className="w-full max-w-md">
+        <h2 className="mb-4 text-lg font-semibold text-slate-100">
+          Create budget
+        </h2>
+        <form
+          className="space-y-4"
+          onSubmit={handleSubmit}
+        >
+          <div>
+            <label className="mb-1 block text-xs text-slate-400">
+              Name
+            </label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={(e) =>
+                setFormData((prev) => ({ ...prev, name: e.target.value }))
+              }
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+              placeholder="Budget name"
+              maxLength={100}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-slate-400">
+              Limit
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              value={formData.limit}
+              onChange={(e) =>
+                setFormData((prev) => ({ ...prev, limit: e.target.value }))
+              }
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+              min="0"
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs text-slate-400">
+                Start date
+              </label>
+              <input
+                type="date"
+                value={formData.startDate}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    startDate: e.target.value,
+                  }))
+                }
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-slate-400">
+                End date
+              </label>
+              <input
+                type="date"
+                value={formData.endDate}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    endDate: e.target.value,
+                  }))
+                }
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+              />
+            </div>
+          </div>
+          {error && (
+            <p className="text-sm text-red-400">{error}</p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onClose}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={mutation.isPending}>
+              {mutation.isPending ? "Creating..." : "Create"}
+            </Button>
+          </div>
+        </form>
+      </Card>
+    </div>
+  );
+};
+
 export const BudgetsPage: React.FC = () => {
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const { data, isLoading } = useQuery({
     queryKey: ["budgets"],
     queryFn: fetchBudgets,
@@ -130,12 +240,7 @@ export const BudgetsPage: React.FC = () => {
         <h2 className="text-lg font-semibold text-slate-100">
           Budgets
         </h2>
-        <Button
-          variant="ghost"
-          disabled
-          className="cursor-not-allowed opacity-60"
-          title="Budget creation UI coming soon"
-        >
+        <Button onClick={() => setShowCreateModal(true)}>
           + New budget
         </Button>
       </div>
@@ -158,6 +263,9 @@ export const BudgetsPage: React.FC = () => {
             <BudgetStatusCard key={budget.id} budget={budget} />
           ))}
         </div>
+      )}
+      {showCreateModal && (
+        <BudgetForm onClose={() => setShowCreateModal(false)} />
       )}
     </div>
   );

@@ -24,19 +24,19 @@ export interface Transaction {
 export interface Budget {
   id: number;
   name: string;
-  category_id?: number | null;
+  limit: number;
+  start_date: string;
+  end_date: string;
+  created_at?: string;
+  updated_at?: string;
   category?: Category | null;
-  amount: number;
-  period: "monthly" | "weekly" | "yearly" | "custom";
-  start_date?: string | null;
-  end_date?: string | null;
 }
 
 export interface BudgetStatus {
-  budget_id: number;
-  spent: number;
+  budget: Budget;
+  total_expense: number;
   remaining: number;
-  progress: number; // 0–1
+  exceeded: boolean;
 }
 
 export interface SummaryResponse {

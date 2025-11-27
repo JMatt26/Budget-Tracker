@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { Card } from "../../components/ui/Card";
@@ -83,10 +83,69 @@ const BudgetForm = ({ onClose }: { onClose: () => void }) => {
   const [formData, setFormData] = useState({
     name: "",
     limit: "",
+    period: "monthly" as "monthly" | "weekly" | "specified",
     startDate: "",
     endDate: "",
   });
   const [error, setError] = useState<string | null>(null);
+
+  // Helper function to format date as YYYY-MM-DD in local timezone
+  const formatLocalDate = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  // Helper function to format date string (YYYY-MM-DD) for display
+  const formatDateForDisplay = (dateStr: string): string => {
+    const [year, month, day] = dateStr.split("-");
+    return `${month}/${day}/${year}`;
+  };
+
+  // Helper functions to calculate dates
+  const getMonthlyDates = () => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return {
+      startDate: formatLocalDate(start),
+      endDate: formatLocalDate(end),
+    };
+  };
+
+  const getWeeklyDates = () => {
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Adjust to Monday
+    const start = new Date(now.getFullYear(), now.getMonth(), diff);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    return {
+      startDate: formatLocalDate(start),
+      endDate: formatLocalDate(end),
+    };
+  };
+
+  // Update dates when period changes
+  useEffect(() => {
+    if (formData.period === "monthly") {
+      const dates = getMonthlyDates();
+      setFormData((prev) => ({
+        ...prev,
+        startDate: dates.startDate,
+        endDate: dates.endDate,
+      }));
+    } else if (formData.period === "weekly") {
+      const dates = getWeeklyDates();
+      setFormData((prev) => ({
+        ...prev,
+        startDate: dates.startDate,
+        endDate: dates.endDate,
+      }));
+    }
+  }, [formData.period]);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -120,13 +179,21 @@ const BudgetForm = ({ onClose }: { onClose: () => void }) => {
       setError("Limit must be greater than 0.");
       return;
     }
-    if (!formData.startDate || !formData.endDate) {
-      setError("Start and end dates are required.");
-      return;
-    }
-    if (formData.startDate > formData.endDate) {
-      setError("End date must be after start date.");
-      return;
+    if (formData.period === "specified") {
+      if (!formData.startDate || !formData.endDate) {
+        setError("Start and end dates are required.");
+        return;
+      }
+      if (formData.startDate > formData.endDate) {
+        setError("End date must be after start date.");
+        return;
+      }
+    } else {
+      // For monthly/weekly, dates should already be set, but validate anyway
+      if (!formData.startDate || !formData.endDate) {
+        setError("Dates could not be calculated. Please try again.");
+        return;
+      }
     }
 
     mutation.mutate();
@@ -172,40 +239,74 @@ const BudgetForm = ({ onClose }: { onClose: () => void }) => {
               min="0"
             />
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-xs text-slate-400">
-                Start date
-              </label>
-              <input
-                type="date"
-                value={formData.startDate}
-                onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    startDate: e.target.value,
-                  }))
-                }
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-slate-400">
-                End date
-              </label>
-              <input
-                type="date"
-                value={formData.endDate}
-                onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    endDate: e.target.value,
-                  }))
-                }
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-              />
-            </div>
+          <div>
+            <label className="mb-1 block text-xs text-slate-400">
+              Period
+            </label>
+            <select
+              value={formData.period}
+              onChange={(e) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  period: e.target.value as "monthly" | "weekly" | "specified",
+                }))
+              }
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+            >
+              <option value="monthly">Monthly</option>
+              <option value="weekly">Weekly</option>
+              <option value="specified">Specified Date</option>
+            </select>
           </div>
+          {formData.period === "specified" ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">
+                  Start date
+                </label>
+                <input
+                  type="date"
+                  value={formData.startDate}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      startDate: e.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">
+                  End date
+                </label>
+                <input
+                  type="date"
+                  value={formData.endDate}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      endDate: e.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-2 text-sm text-slate-400">
+              <p className="text-xs">
+                {formData.period === "monthly"
+                  ? "This budget will cover the current month"
+                  : "This budget will cover the current week"}
+              </p>
+              <p className="mt-1 text-xs">
+                {formData.startDate && formData.endDate
+                  ? `${formatDateForDisplay(formData.startDate)} - ${formatDateForDisplay(formData.endDate)}`
+                  : "Calculating dates..."}
+              </p>
+            </div>
+          )}
           {error && (
             <p className="text-sm text-red-400">{error}</p>
           )}

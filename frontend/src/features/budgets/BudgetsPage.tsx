@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
@@ -7,9 +8,29 @@ import type { Budget, BudgetStatus } from "../../lib/types";
 import { fetchBudgets, fetchBudgetStatus } from "../../lib/budget-api";
 
 const BudgetStatusCard = ({ budget }: { budget: Budget }) => {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  
   const { data, isLoading } = useQuery({
     queryKey: ["budget-status", budget.id],
     queryFn: () => fetchBudgetStatus(budget.id),
+    refetchOnWindowFocus: true, // Refetch when window regains focus
+    refetchOnMount: true, // Refetch when component mounts
+    staleTime: 0, // Always consider data stale to ensure fresh results
+  });
+
+  const deleteBudgetMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await api.delete(`/budgets/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["budgets"] });
+      queryClient.invalidateQueries({ queryKey: ["budget-status"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.detail || "Failed to delete budget");
+    },
   });
 
   const limit = Number(budget.limit ?? 0);
@@ -20,7 +41,10 @@ const BudgetStatusCard = ({ budget }: { budget: Budget }) => {
     limit > 0 ? Math.min(100, (Number(spent) / Number(limit)) * 100) : 0;
 
   return (
-    <Card className="space-y-3">
+    <Card 
+      className="space-y-3 cursor-pointer transition hover:border-sky-500/50 hover:bg-slate-900/80"
+      onClick={() => navigate(`/budgets/${budget.id}`)}
+    >
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold text-slate-100">
@@ -71,9 +95,28 @@ const BudgetStatusCard = ({ budget }: { budget: Budget }) => {
 
       {exceeded && (
         <p className="text-xs text-rose-400">
-          You’ve exceeded this budget.
+          You've exceeded this budget.
         </p>
       )}
+
+      <div className="flex justify-end pt-2">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (
+              window.confirm(
+                `Are you sure you want to delete "${budget.name}"? This will remove the budget association from all transactions.`
+              )
+            ) {
+              deleteBudgetMutation.mutate(budget.id);
+            }
+          }}
+          className="text-xs text-rose-400 hover:text-rose-300 transition"
+          disabled={deleteBudgetMutation.isPending}
+        >
+          {deleteBudgetMutation.isPending ? "Deleting..." : "Delete"}
+        </button>
+      </div>
     </Card>
   );
 };
@@ -333,6 +376,7 @@ export const BudgetsPage: React.FC = () => {
   const { data, isLoading } = useQuery({
     queryKey: ["budgets"],
     queryFn: fetchBudgets,
+    refetchOnMount: true, // Refetch when component mounts
   });
 
   return (

@@ -119,9 +119,20 @@ export const TransactionForm = ({
       const { data } = await api.post("/transactions", payload);
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({
         queryKey: ["transactions"],
+      });
+      // Invalidate all budget statuses and categories to ensure all budgets update
+      queryClient.invalidateQueries({
+        queryKey: ["budget-status"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["budget-categories"],
+      });
+      // Also invalidate the budgets list to refresh the cards
+      queryClient.invalidateQueries({
+        queryKey: ["budgets"],
       });
       onClose();
     },

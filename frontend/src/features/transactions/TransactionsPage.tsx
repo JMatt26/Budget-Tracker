@@ -70,12 +70,24 @@ const formatDate = (iso: string) => {
     });
   
     const deleteMutation = useMutation({
-      mutationFn: async (id: number) => {
-        await api.delete(`/transactions/${id}`);
+      mutationFn: async (tx: Transaction) => {
+        await api.delete(`/transactions/${tx.id}`);
+        return tx; // Return the transaction so we can use its budget_id
       },
-      onSuccess: () => {
+      onSuccess: (deletedTransaction) => {
         queryClient.invalidateQueries({
           queryKey: ["transactions"],
+        });
+        // Invalidate all budget statuses and categories to ensure all budgets update
+        queryClient.invalidateQueries({
+          queryKey: ["budget-status"],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ["budget-categories"],
+        });
+        // Also invalidate the budgets list to refresh the cards
+        queryClient.invalidateQueries({
+          queryKey: ["budgets"],
         });
       },
     });
@@ -316,7 +328,7 @@ const formatDate = (iso: string) => {
                           className="text-rose-400 hover:text-rose-300"
                           disabled={isDeleting}
                           onClick={() =>
-                            deleteMutation.mutate(tx.id)
+                            deleteMutation.mutate(tx)
                           }
                         >
                           {isDeleting ? "Deleting..." : "Delete"}

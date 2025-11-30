@@ -39,6 +39,17 @@ export interface BudgetStatus {
   exceeded: boolean;
 }
 
+export interface BudgetCategory {
+  id: number;
+  budget_id: number;
+  category_id: number;
+  limit: number;
+  category: Category;
+  actual_spending: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SummaryResponse {
   total_income: number;
   total_expense: number;

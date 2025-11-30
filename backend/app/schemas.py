@@ -84,6 +84,24 @@ class BudgetStatus(BaseModel):
     exceeded: bool
 
 
+class BudgetCategoryCreate(BaseModel):
+    category_id: Optional[int] = None  # If None, create new category
+    category_name: Optional[str] = Field(None, max_length=100)  # For new category
+    category_type: Optional[str] = Field(None, pattern="^(income|expense|investment)$")  # For new category
+    limit: Decimal = Field(..., max_digits=10, decimal_places=2)
+
+
+class BudgetCategoryRead(BaseModel):
+    id: int
+    budget_id: int
+    category_id: int
+    limit: Decimal
+    category: CategoryRead
+    actual_spending: Decimal  # Calculated from transactions
+    created_at: datetime
+    updated_at: datetime
+
+
 class UserBase(BaseModel):
     email: EmailStr
 

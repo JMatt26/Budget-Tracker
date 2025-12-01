@@ -49,12 +49,13 @@ def create_transaction(
 
 @router.get("/", response_model=schemas.TransactionListResponse)
 def list_transactions(
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     category_id: Optional[int] = Query(None),
     type: Optional[Literal["income", "expense", "investment"]] = Query(None),
+    budget_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
     min_amount: Optional[float] = Query(None),
@@ -76,6 +77,8 @@ def list_transactions(
         query = query.filter(models.Transaction.category_id == category_id)
     if type is not None:
         query = query.filter(models.Transaction.type == type)
+    if budget_id is not None:
+        query = query.filter(models.Transaction.budget_id == budget_id)
 
     total = query.count()
     items = (

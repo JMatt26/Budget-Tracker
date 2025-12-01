@@ -233,10 +233,13 @@ export const BudgetDetailPage: React.FC = () => {
   const budgetId = Number(params.budgetId ?? "");
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabKey>("numeric");
+  const [numericSubTab, setNumericSubTab] = useState<"categories" | "transactions">("categories");
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [showEditBudgetForm, setShowEditBudgetForm] = useState(false);
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
+  const [sortBy, setSortBy] = useState<"date" | "amount" | "category">("date");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   const { data: budget, isLoading: budgetLoading } = useQuery({
     queryKey: ["budget", budgetId],
@@ -263,6 +266,29 @@ export const BudgetDetailPage: React.FC = () => {
       return data;
     },
     enabled: !Number.isNaN(budgetId),
+  });
+
+  const {
+    data: budgetTransactions,
+    isLoading: transactionsLoading,
+  } = useQuery({
+    queryKey: ["budget-transactions", budgetId],
+    queryFn: async () => {
+      if (!budget) return { items: [], total: 0 };
+      const { data } = await api.get<{
+        items: Transaction[];
+        total: number;
+        limit: number;
+        offset: number;
+      }>("/transactions", {
+        params: {
+          budget_id: budgetId,
+          limit: 1000, // Get all transactions for the budget
+        },
+      });
+      return data;
+    },
+    enabled: !Number.isNaN(budgetId) && !!budget,
   });
 
   const queryClient = useQueryClient();
@@ -357,132 +383,276 @@ export const BudgetDetailPage: React.FC = () => {
           </Card>
         </div>
 
-        {/* Budget Categories */}
+        {/* Sub-tabs for Categories and Transactions */}
         <Card>
-          <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-100">
-              Category Limits
-            </h3>
-            <Button
-              variant="ghost"
-              onClick={() => setShowCategoryForm(true)}
-              className="text-xs"
+          <div className="mb-4 flex flex-wrap gap-2">
+            <button
+              onClick={() => setNumericSubTab("categories")}
+              className={`rounded-full px-4 py-1 text-sm font-medium transition ${
+                numericSubTab === "categories"
+                  ? "bg-slate-200 text-slate-900"
+                  : "bg-slate-800 text-slate-400 hover:bg-slate-900"
+              }`}
             >
-              + Add Category
-            </Button>
+              Category Limits
+            </button>
+            <button
+              onClick={() => setNumericSubTab("transactions")}
+              className={`rounded-full px-4 py-1 text-sm font-medium transition ${
+                numericSubTab === "transactions"
+                  ? "bg-slate-200 text-slate-900"
+                  : "bg-slate-800 text-slate-400 hover:bg-slate-900"
+              }`}
+            >
+              Transactions
+            </button>
           </div>
-          {budgetCategories && budgetCategories.length > 0 ? (
-            <div className="space-y-3">
-              {budgetCategories.map((bc) => {
-                const categoryLimit = Number(bc.limit);
-                const actualSpending = Number(bc.actual_spending);
-                const categoryProgress = categoryLimit > 0 
-                  ? Math.min(100, (actualSpending / categoryLimit) * 100) 
-                  : 0;
-                const exceeded = actualSpending > categoryLimit;
-                
-                return (
-                  <div
-                    key={bc.id}
-                    className="rounded-lg border border-slate-800 bg-slate-900/50 p-3 cursor-default"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedCategoryId(bc.id);
-                            }}
-                            className="text-sm font-medium text-slate-100 hover:text-sky-400 transition cursor-pointer"
-                          >
-                            {bc.category.name}
-                          </button>
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${
-                              bc.category.type === "income"
-                                ? "bg-green-500/20 text-green-400"
-                                : bc.category.type === "investment"
-                                ? "bg-blue-500/20 text-blue-400"
-                                : "bg-red-500/20 text-red-400"
-                            }`}
-                          >
-                            {bc.category.type}
-                          </span>
-                        </div>
-                        <div className="mt-2 grid grid-cols-2 gap-4 text-xs">
-                          <div>
-                            <p className="text-slate-400">Limit</p>
-                            <p className="mt-1 font-semibold text-slate-200">
-                              {formatCurrency(categoryLimit)}
-                            </p>
+
+          {numericSubTab === "categories" ? (
+            <>
+              {/* Budget Categories */}
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-100">
+                  Category Limits
+                </h3>
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowCategoryForm(true)}
+                  className="text-xs"
+                >
+                  + Add Category
+                </Button>
+              </div>
+              {budgetCategories && budgetCategories.length > 0 ? (
+                <div className="space-y-3">
+                  {budgetCategories.map((bc) => {
+                    const categoryLimit = Number(bc.limit);
+                    const actualSpending = Number(bc.actual_spending);
+                    const categoryProgress = categoryLimit > 0 
+                      ? Math.min(100, (actualSpending / categoryLimit) * 100) 
+                      : 0;
+                    const exceeded = actualSpending > categoryLimit;
+                    
+                    return (
+                      <div
+                        key={bc.id}
+                        onClick={() => setSelectedCategoryId(bc.id)}
+                        className="rounded-lg border border-slate-800 bg-slate-900/50 p-3 cursor-pointer transition hover:border-sky-500/50 hover:bg-slate-900/70"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-slate-100">
+                                {bc.category.name}
+                              </span>
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${
+                                  bc.category.type === "income"
+                                    ? "bg-green-500/20 text-green-400"
+                                    : bc.category.type === "investment"
+                                    ? "bg-blue-500/20 text-blue-400"
+                                    : "bg-red-500/20 text-red-400"
+                                }`}
+                              >
+                                {bc.category.type}
+                              </span>
+                            </div>
+                            <div className="mt-2 grid grid-cols-2 gap-4 text-xs">
+                              <div>
+                                <p className="text-slate-400">Limit</p>
+                                <p className="mt-1 font-semibold text-slate-200">
+                                  {formatCurrency(categoryLimit)}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-slate-400">Spent</p>
+                                <p
+                                  className={`mt-1 font-semibold ${
+                                    exceeded ? "text-rose-400" : "text-slate-200"
+                                  }`}
+                                >
+                                  {formatCurrency(actualSpending)}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
+                              <div
+                                className={`h-full rounded-full ${
+                                  exceeded ? "bg-rose-500" : "bg-emerald-500"
+                                }`}
+                                style={{ width: `${categoryProgress}%` }}
+                              />
+                            </div>
+                            {exceeded && (
+                              <p className="mt-1 text-xs text-rose-400">
+                                Over budget by {formatCurrency(actualSpending - categoryLimit)}
+                              </p>
+                            )}
                           </div>
-                          <div>
-                            <p className="text-slate-400">Spent</p>
-                            <p
-                              className={`mt-1 font-semibold ${
-                                exceeded ? "text-rose-400" : "text-slate-200"
-                              }`}
+                          <div className="ml-2 flex gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingCategoryId(bc.id);
+                              }}
+                              className="text-xs text-sky-400 hover:text-sky-300"
                             >
-                              {formatCurrency(actualSpending)}
-                            </p>
+                              Edit
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (
+                                  window.confirm(
+                                    `Remove "${bc.category.name}" from this budget?`
+                                  )
+                                ) {
+                                  deleteCategoryMutation.mutate(bc.id);
+                                }
+                              }}
+                              className="text-xs text-rose-400 hover:text-rose-300"
+                              disabled={deleteCategoryMutation.isPending}
+                            >
+                              Remove
+                            </button>
                           </div>
                         </div>
-                        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
-                          <div
-                            className={`h-full rounded-full ${
-                              exceeded ? "bg-rose-500" : "bg-emerald-500"
-                            }`}
-                            style={{ width: `${categoryProgress}%` }}
-                          />
-                        </div>
-                        {exceeded && (
-                          <p className="mt-1 text-xs text-rose-400">
-                            Over budget by {formatCurrency(actualSpending - categoryLimit)}
-                          </p>
-                        )}
                       </div>
-                      <div className="ml-2 flex gap-2">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingCategoryId(bc.id);
-                          }}
-                          className="text-xs text-sky-400 hover:text-sky-300"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (
-                              window.confirm(
-                                `Remove "${bc.category.name}" from this budget?`
-                              )
-                            ) {
-                              deleteCategoryMutation.mutate(bc.id);
-                            }
-                          }}
-                          className="text-xs text-rose-400 hover:text-rose-300"
-                          disabled={deleteCategoryMutation.isPending}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-slate-400">
+                  No categories added yet. Click "+ Add Category" to get started.
+                </p>
+              )}
+            </>
           ) : (
-            <p className="text-sm text-slate-400">
-              No categories added yet. Click "+ Add Category" to get started.
-            </p>
+            <>
+              {/* Budget Transactions */}
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-100">
+                  Transactions
+                </h3>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as "date" | "amount" | "category")}
+                    className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 focus:border-sky-500 focus:outline-none"
+                  >
+                    <option value="date">Sort by Date</option>
+                    <option value="amount">Sort by Amount</option>
+                    <option value="category">Sort by Category</option>
+                  </select>
+                  <button
+                    onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
+                    className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 hover:border-sky-500 transition"
+                    title={sortOrder === "asc" ? "Ascending" : "Descending"}
+                  >
+                    {sortOrder === "asc" ? "↑" : "↓"}
+                  </button>
+                </div>
+              </div>
+              {transactionsLoading ? (
+                <div className="py-8 text-center text-sm text-slate-400">
+                  Loading transactions...
+                </div>
+              ) : budgetTransactions && budgetTransactions.items.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-slate-800">
+                        <th className="py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">
+                          Date
+                        </th>
+                        <th className="py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">
+                          Description
+                        </th>
+                        <th className="py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">
+                          Category
+                        </th>
+                        <th className="py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-400">
+                          Amount
+                        </th>
+                        <th className="py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">
+                          Type
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...(budgetTransactions.items || [])]
+                        .sort((a, b) => {
+                          let comparison = 0;
+                          if (sortBy === "date") {
+                            comparison = new Date(a.date).getTime() - new Date(b.date).getTime();
+                          } else if (sortBy === "amount") {
+                            comparison = Number(a.amount) - Number(b.amount);
+                          } else if (sortBy === "category") {
+                            const aCategory = a.category?.name || "Uncategorized";
+                            const bCategory = b.category?.name || "Uncategorized";
+                            comparison = aCategory.localeCompare(bCategory);
+                          }
+                          return sortOrder === "asc" ? comparison : -comparison;
+                        })
+                        .map((tx) => (
+                          <tr
+                            key={tx.id}
+                            className="border-b border-slate-900/60 last:border-0"
+                          >
+                            <td className="py-2 text-xs text-slate-300">
+                              {new Date(tx.date).toLocaleDateString()}
+                            </td>
+                            <td className="py-2 text-xs text-slate-300">
+                              {tx.description || "—"}
+                            </td>
+                            <td className="py-2 text-xs text-slate-300">
+                              {tx.category?.name || (
+                                <span className="text-slate-500">Uncategorized</span>
+                              )}
+                            </td>
+                            <td className="py-2 text-right text-xs font-semibold">
+                              <span
+                                className={
+                                  tx.type === "income"
+                                    ? "text-emerald-400"
+                                    : tx.type === "investment"
+                                    ? "text-blue-400"
+                                    : "text-rose-400"
+                                }
+                              >
+                                {tx.type === "income" ? "+" : "-"}
+                                {formatCurrency(tx.amount)}
+                              </span>
+                            </td>
+                            <td className="py-2">
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${
+                                  tx.type === "income"
+                                    ? "bg-green-500/20 text-green-400"
+                                    : tx.type === "investment"
+                                    ? "bg-blue-500/20 text-blue-400"
+                                    : "bg-red-500/20 text-red-400"
+                                }`}
+                              >
+                                {tx.type}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="py-8 text-center text-sm text-slate-400">
+                  No transactions found for this budget.
+                </p>
+              )}
+            </>
           )}
         </Card>
       </div>
     );
-  }, [budget, status, budgetCategories, deleteCategoryMutation]);
+  }, [budget, status, budgetCategories, deleteCategoryMutation, budgetTransactions, sortBy, sortOrder, transactionsLoading, numericSubTab]);
 
   const graphsContent = (
     <Card>

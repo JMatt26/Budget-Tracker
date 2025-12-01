@@ -87,6 +87,36 @@ def get_budget(
     return budget
 
 
+@router.put("/{budget_id}", response_model=schemas.BudgetRead)
+def update_budget(
+    budget_id: int,
+    budget_in: schemas.BudgetUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    budget = (
+        db.query(models.Budget)
+        .filter(
+            models.Budget.id == budget_id,
+            models.Budget.user_id == current_user.id
+        )
+        .first()
+    )
+    if budget is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Budget not found.",
+        )
+
+    update_data = budget_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(budget, field, value)
+
+    db.commit()
+    db.refresh(budget)
+    return budget
+
+
 @router.delete("/{budget_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_budget(
     budget_id: int,
@@ -341,6 +371,74 @@ def get_budget_categories(
         ))
 
     return result
+
+
+@router.put("/{budget_id}/categories/{budget_category_id}", response_model=schemas.BudgetCategoryRead)
+def update_budget_category(
+    budget_id: int,
+    budget_category_id: int,
+    category_in: schemas.BudgetCategoryUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    # Verify budget exists and belongs to user
+    budget = (
+        db.query(models.Budget)
+        .filter(
+            models.Budget.id == budget_id,
+            models.Budget.user_id == current_user.id
+        )
+        .first()
+    )
+    if budget is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Budget not found.",
+        )
+
+    # Find and update budget category
+    budget_category = (
+        db.query(models.BudgetCategory)
+        .filter(
+            models.BudgetCategory.id == budget_category_id,
+            models.BudgetCategory.budget_id == budget_id
+        )
+        .first()
+    )
+    if budget_category is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Category not found in this budget.",
+        )
+
+    update_data = category_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(budget_category, field, value)
+
+    db.commit()
+    db.refresh(budget_category)
+
+    # Calculate actual spending
+    actual_spending = (
+        db.query(func.coalesce(func.sum(models.Transaction.amount), 0))
+        .filter(models.Transaction.category_id == budget_category.category_id)
+        .filter(models.Transaction.budget_id == budget_id)
+        .filter(models.Transaction.user_id == current_user.id)
+        .filter(models.Transaction.date >= budget.start_date)
+        .filter(models.Transaction.date <= budget.end_date)
+        .scalar() or Decimal("0")
+    )
+
+    return schemas.BudgetCategoryRead(
+        id=budget_category.id,
+        budget_id=budget_category.budget_id,
+        category_id=budget_category.category_id,
+        limit=budget_category.limit,
+        category=budget_category.category,
+        actual_spending=actual_spending,
+        created_at=budget_category.created_at,
+        updated_at=budget_category.updated_at,
+    )
 
 
 @router.delete("/{budget_id}/categories/{budget_category_id}", status_code=status.HTTP_204_NO_CONTENT)

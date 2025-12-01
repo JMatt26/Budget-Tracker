@@ -69,6 +69,13 @@ class BudgetCreate(BudgetBase):
     pass
 
 
+class BudgetUpdate(BaseModel):
+    name: Optional[str] = Field(None, max_length=100)
+    limit: Optional[Decimal] = Field(None, max_digits=10, decimal_places=2)
+    start_date: Optional[DateType] = None
+    end_date: Optional[DateType] = None
+
+
 class BudgetRead(BudgetBase):
     id: int
     created_at: datetime
@@ -89,6 +96,10 @@ class BudgetCategoryCreate(BaseModel):
     category_name: Optional[str] = Field(None, max_length=100)  # For new category
     category_type: Optional[str] = Field(None, pattern="^(income|expense|investment)$")  # For new category
     limit: Decimal = Field(..., max_digits=10, decimal_places=2)
+
+
+class BudgetCategoryUpdate(BaseModel):
+    limit: Optional[Decimal] = Field(None, max_digits=10, decimal_places=2)
 
 
 class BudgetCategoryRead(BaseModel):

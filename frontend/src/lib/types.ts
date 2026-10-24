@@ -16,25 +16,38 @@ export interface Transaction {
   type: TransactionType;
   category_id?: number | null;
   category?: Category | null;
+  budget_id?: number | null;
+  budget?: Budget | null;
   created_at?: string;
 }
 
 export interface Budget {
   id: number;
   name: string;
-  category_id?: number | null;
+  limit: number;
+  start_date: string;
+  end_date: string;
+  created_at?: string;
+  updated_at?: string;
   category?: Category | null;
-  amount: number;
-  period: "monthly" | "weekly" | "yearly" | "custom";
-  start_date?: string | null;
-  end_date?: string | null;
 }
 
 export interface BudgetStatus {
-  budget_id: number;
-  spent: number;
+  budget: Budget;
+  total_expense: number;
   remaining: number;
-  progress: number; // 0–1
+  exceeded: boolean;
+}
+
+export interface BudgetCategory {
+  id: number;
+  budget_id: number;
+  category_id: number;
+  limit: number;
+  category: Category;
+  actual_spending: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface SummaryResponse {
@@ -48,6 +61,16 @@ export interface SummaryResponse {
     income: number;
     expense: number;
   }[];
+}
+
+export type IncomeFrequency = "weekly" | "biweekly" | "monthly" | "yearly";
+
+export interface Income {
+  id: number;
+  amount: number;
+  frequency: IncomeFrequency;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Token {

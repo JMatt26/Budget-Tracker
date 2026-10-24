@@ -29,6 +29,13 @@ class Category(Base):
         cascade="all, delete-orphan",
     )
 
+    # many-to-many: a category can be in many budgets with different limits
+    budget_categories = relationship(
+        "BudgetCategory",
+        back_populates="category",
+        cascade="all, delete-orphan",
+    )
+
 
 class Transaction(Base):
     __tablename__ = "transactions"
@@ -91,6 +98,35 @@ class Budget(Base):
         cascade="all, delete-orphan",
     )
 
+    # many-to-many: a budget can have many categories with limits
+    budget_categories = relationship(
+        "BudgetCategory",
+        back_populates="budget",
+        cascade="all, delete-orphan",
+    )
+
+
+class BudgetCategory(Base):
+    __tablename__ = "budget_categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    budget_id = Column(Integer, ForeignKey("budgets.id"), nullable=False)
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=False)
+    limit = Column(Numeric(10, 2), nullable=False)  # Max spending for this category in this budget
+
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    budget = relationship("Budget", back_populates="budget_categories")
+    category = relationship("Category", back_populates="budget_categories")
+
 
 class User(Base):
     __tablename__ = "users"
@@ -123,4 +159,31 @@ class User(Base):
         "Budget",
         back_populates="user",
         cascade="all, delete-orphan",
+    )
+    income = relationship(
+        "Income",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+
+class Income(Base):
+    __tablename__ = "incomes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    amount = Column(Numeric(10, 2), nullable=False)
+    frequency = Column(String(20), nullable=False)  # weekly | biweekly | monthly | yearly
+
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    user = relationship("User", back_populates="income")
+
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
     )

@@ -33,30 +33,7 @@ class TransactionBase(BaseModel):
     budget_id: Optional[int] = None
 
 
-class TransactionCreate(TransactionBase):
-    pass
 
-
-class TransactionRead(TransactionBase):
-    id: int
-    created_at: datetime
-    updated_at: datetime
-    category: Optional[CategoryRead] = None
-
-    @field_serializer("amount")
-    def serialize_amount(self, v: Decimal) -> float:
-        return float(v)
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class TransactionUpdate(BaseModel):
-    amount: Optional[Decimal] = Field(None, max_digits=10, decimal_places=2)
-    description: Optional[str] = Field(None, max_length=255)
-    date: Optional[DateType] = None
-    type: Optional[str] = Field(None, pattern="^(income|expense|investment)$")
-    category_id: Optional[int] = None
-    budget_id: Optional[int] = None
 
 
 class SummaryTotals(BaseModel):
@@ -92,6 +69,13 @@ class BudgetCreate(BudgetBase):
     pass
 
 
+class BudgetUpdate(BaseModel):
+    name: Optional[str] = Field(None, max_length=100)
+    limit: Optional[Decimal] = Field(None, max_digits=10, decimal_places=2)
+    start_date: Optional[DateType] = None
+    end_date: Optional[DateType] = None
+
+
 class BudgetRead(BudgetBase):
     id: int
     created_at: datetime
@@ -107,6 +91,28 @@ class BudgetStatus(BaseModel):
     exceeded: bool
 
 
+class BudgetCategoryCreate(BaseModel):
+    category_id: Optional[int] = None  # If None, create new category
+    category_name: Optional[str] = Field(None, max_length=100)  # For new category
+    category_type: Optional[str] = Field(None, pattern="^(income|expense|investment)$")  # For new category
+    limit: Decimal = Field(..., max_digits=10, decimal_places=2)
+
+
+class BudgetCategoryUpdate(BaseModel):
+    limit: Optional[Decimal] = Field(None, max_digits=10, decimal_places=2)
+
+
+class BudgetCategoryRead(BaseModel):
+    id: int
+    budget_id: int
+    category_id: int
+    limit: Decimal
+    category: CategoryRead
+    actual_spending: Decimal  # Calculated from transactions
+    created_at: datetime
+    updated_at: datetime
+
+
 class UserBase(BaseModel):
     email: EmailStr
 
@@ -119,6 +125,58 @@ class UserRead(UserBase):
     id: int
     created_at: datetime
     updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class TransactionCreate(TransactionBase):
+    pass
+
+
+class TransactionRead(TransactionBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    category: Optional[CategoryRead] = None
+    budget: Optional[BudgetRead] = None
+
+    @field_serializer("amount")
+    def serialize_amount(self, v: Decimal) -> float:
+        return float(v)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TransactionUpdate(BaseModel):
+    amount: Optional[Decimal] = Field(None, max_digits=10, decimal_places=2)
+    description: Optional[str] = Field(None, max_length=255)
+    date: Optional[DateType] = None
+    type: Optional[str] = Field(None, pattern="^(income|expense|investment)$")
+    category_id: Optional[int] = None
+    budget_id: Optional[int] = None
+
+
+class IncomeBase(BaseModel):
+    amount: Decimal = Field(..., max_digits=10, decimal_places=2, gt=0)
+    frequency: str = Field(..., pattern="^(weekly|biweekly|monthly|yearly)$")
+
+
+class IncomeCreate(IncomeBase):
+    pass
+
+
+class IncomeUpdate(BaseModel):
+    amount: Optional[Decimal] = Field(None, max_digits=10, decimal_places=2, gt=0)
+    frequency: Optional[str] = Field(None, pattern="^(weekly|biweekly|monthly|yearly)$")
+
+
+class IncomeRead(IncomeBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer("amount")
+    def serialize_amount(self, v: Decimal) -> float:
+        return float(v)
 
     model_config = ConfigDict(from_attributes=True)
 

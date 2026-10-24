@@ -6,6 +6,7 @@ import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import { TransactionForm } from "./TransactionForm";
 import React from "react";
+import { useNavigate } from "react-router-dom";
 
 type Filters = {
     start_date?: string;
@@ -54,6 +55,7 @@ const formatDate = (iso: string) => {
     const [filters, setFilters] = useState<Filters>({});
     const [showForm, setShowForm] = useState(false);
     const [editing, setEditing] = useState<Transaction | null>(null);
+    const navigate = useNavigate();
   
     const queryClient = useQueryClient();
   
@@ -68,12 +70,24 @@ const formatDate = (iso: string) => {
     });
   
     const deleteMutation = useMutation({
-      mutationFn: async (id: number) => {
-        await api.delete(`/transactions/${id}`);
+      mutationFn: async (tx: Transaction) => {
+        await api.delete(`/transactions/${tx.id}`);
+        return tx; // Return the transaction so we can use its budget_id
       },
-      onSuccess: () => {
+      onSuccess: (deletedTransaction) => {
         queryClient.invalidateQueries({
           queryKey: ["transactions"],
+        });
+        // Invalidate all budget statuses and categories to ensure all budgets update
+        queryClient.invalidateQueries({
+          queryKey: ["budget-status"],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ["budget-categories"],
+        });
+        // Also invalidate the budgets list to refresh the cards
+        queryClient.invalidateQueries({
+          queryKey: ["budgets"],
         });
       },
     });
@@ -250,6 +264,9 @@ const formatDate = (iso: string) => {
                     <th className="py-2 text-left">
                       Category
                     </th>
+                    <th className="py-2 text-left">
+                      Budget
+                    </th>
                     <th className="py-2"></th>
                   </tr>
                 </thead>
@@ -283,6 +300,21 @@ const formatDate = (iso: string) => {
                       <td className="py-2">
                         {tx.category?.name ?? "Uncategorized"}
                       </td>
+                      <td className="py-2">
+                        {tx.budget ? (
+                          <button
+                            className="text-sky-400 hover:text-sky-300"
+                            type="button"
+                            onClick={() =>
+                              navigate(`/budgets/${tx.budget?.id}`)
+                            }
+                          >
+                            {tx.budget.name}
+                          </button>
+                        ) : (
+                          <span className="text-slate-400">Unscheduled</span>
+                        )}
+                      </td>
                       <td className="py-2 text-right text-xs">
                         <button
                           className="mr-3 text-sky-400 hover:text-sky-300"
@@ -296,7 +328,7 @@ const formatDate = (iso: string) => {
                           className="text-rose-400 hover:text-rose-300"
                           disabled={isDeleting}
                           onClick={() =>
-                            deleteMutation.mutate(tx.id)
+                            deleteMutation.mutate(tx)
                           }
                         >
                           {isDeleting ? "Deleting..." : "Delete"}

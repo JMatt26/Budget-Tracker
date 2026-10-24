@@ -220,6 +220,183 @@ const BudgetCategoryForm = ({
   );
 };
 
+type BudgetTransactionFormData = {
+  date: string;
+  amount: string;
+  type: "income" | "expense" | "investment";
+  category_id: string;
+  description: string;
+};
+
+const BudgetTransactionForm = ({
+  budgetId,
+  onClose,
+}: {
+  budgetId: number;
+  onClose: () => void;
+}) => {
+  const queryClient = useQueryClient();
+  const [formData, setFormData] = useState<BudgetTransactionFormData>({
+    date: new Date().toISOString().slice(0, 10),
+    amount: "",
+    type: "expense",
+    category_id: "",
+    description: "",
+  });
+  const [error, setError] = useState<string | null>(null);
+
+  const { data: categories } = useQuery({
+    queryKey: ["categories"],
+    queryFn: fetchCategories,
+  });
+
+  const mutation = useMutation({
+    mutationFn: async (data: BudgetTransactionFormData) => {
+      const payload: any = {
+        date: data.date,
+        amount: Number(data.amount),
+        type: data.type,
+        description: data.description.trim() || null,
+        category_id: data.category_id ? Number(data.category_id) : null,
+        budget_id: budgetId,
+      };
+      const { data: response } = await api.post("/transactions", payload);
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["budget-transactions", budgetId] });
+      queryClient.invalidateQueries({ queryKey: ["budget-status", budgetId] });
+      queryClient.invalidateQueries({ queryKey: ["budget-categories", budgetId] });
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["budgets"] });
+      onClose();
+    },
+    onError: (err: any) => {
+      setError(err.response?.data?.detail || "Failed to add transaction");
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!formData.date) {
+      setError("Date is required");
+      return;
+    }
+    if (!formData.amount || Number(formData.amount) <= 0) {
+      setError("Amount must be greater than 0");
+      return;
+    }
+
+    mutation.mutate(formData);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <Card className="w-full max-w-md">
+        <h2 className="mb-4 text-lg font-semibold">Add Transaction to Budget</h2>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs text-slate-400">Date</label>
+              <input
+                type="date"
+                value={formData.date}
+                onChange={(e) =>
+                  setFormData({ ...formData, date: e.target.value })
+                }
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-slate-400">Amount</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={formData.amount}
+                onChange={(e) =>
+                  setFormData({ ...formData, amount: e.target.value })
+                }
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-slate-400">Type</label>
+            <select
+              value={formData.type}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  type: e.target.value as "income" | "expense" | "investment",
+                })
+              }
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+            >
+              <option value="expense">Expense</option>
+              <option value="income">Income</option>
+              <option value="investment">Investment</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-slate-400">Category</label>
+            <select
+              value={formData.category_id}
+              onChange={(e) =>
+                setFormData({ ...formData, category_id: e.target.value })
+              }
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+            >
+              <option value="">None</option>
+              {categories?.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-slate-400">
+              Description
+            </label>
+            <input
+              type="text"
+              maxLength={255}
+              value={formData.description}
+              onChange={(e) =>
+                setFormData({ ...formData, description: e.target.value })
+              }
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+              placeholder="Optional"
+            />
+          </div>
+
+          {error && (
+            <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-400">
+              {error}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={mutation.isPending}>
+              {mutation.isPending ? "Adding..." : "Add Transaction"}
+            </Button>
+          </div>
+        </form>
+      </Card>
+    </div>
+  );
+};
+
 type TabKey = "numeric" | "graphs" | "charts";
 
 const tabLabels: Record<TabKey, string> = {
@@ -237,6 +414,7 @@ export const BudgetDetailPage: React.FC = () => {
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [showEditBudgetForm, setShowEditBudgetForm] = useState(false);
+  const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [sortBy, setSortBy] = useState<"date" | "amount" | "category">("date");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
@@ -535,6 +713,13 @@ export const BudgetDetailPage: React.FC = () => {
                   Transactions
                 </h3>
                 <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    onClick={() => setShowTransactionForm(true)}
+                    className="text-xs"
+                  >
+                    + Add Transaction
+                  </Button>
                   <select
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value as "date" | "amount" | "category")}
@@ -957,6 +1142,13 @@ export const BudgetDetailPage: React.FC = () => {
           budgetId={budgetId}
           onClose={() => setShowCategoryForm(false)}
           onSuccess={() => setShowCategoryForm(false)}
+        />
+      )}
+
+      {showTransactionForm && (
+        <BudgetTransactionForm
+          budgetId={budgetId}
+          onClose={() => setShowTransactionForm(false)}
         />
       )}
 

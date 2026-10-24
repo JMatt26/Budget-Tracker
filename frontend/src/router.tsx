@@ -12,6 +12,7 @@ import { BudgetsPage } from "./features/budgets/BudgetsPage";
   import { CategoriesPage } from "./features/categories/CategoriesPage";
   import { ReportsPage } from "./features/reports/ReportsPage";
 import { BudgetDetailPage } from "./features/budgets/BudgetDetailPage";
+  import { IncomePage } from "./features/income/IncomePage";
   import { LoginPage } from "./features/auth/LoginPage";
   import { RegisterPage } from "./features/auth/RegisterPage";
   import { useAuth } from "./lib/auth";
@@ -51,6 +52,7 @@ import React from "react";
           <Route path="transactions" element={<TransactionsPage />} />
           <Route path="budgets" element={<BudgetsPage />} />
           <Route path="budgets/:budgetId" element={<BudgetDetailPage />} />
+          <Route path="income" element={<IncomePage />} />
           <Route path="categories" element={<CategoriesPage />} />
           <Route path="reports" element={<ReportsPage />} />
         </Route>

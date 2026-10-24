@@ -11,7 +11,7 @@ from app.middleware.request_logging import RequestLoggingMiddleware
 
 from . import schemas
 
-from .routers import transactions, categories, reports, budgets, auth
+from .routers import transactions, categories, reports, budgets, auth, income
 
 configure_logging()
 
@@ -48,6 +48,7 @@ app.include_router(categories.router)
 app.include_router(reports.router)
 app.include_router(budgets.router)
 app.include_router(auth.router)
+app.include_router(income.router)
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):

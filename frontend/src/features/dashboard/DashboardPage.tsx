@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { Card } from "../../components/ui/Card";
+import { fetchIncome } from "../../lib/income-api";
+import { IncomeProjections } from "../income/IncomeProjections";
 
 type LegacySummary = {
   total_income?: number;
@@ -46,6 +48,11 @@ export const DashboardPage = () => {
     queryFn: fetchSummary,
   });
 
+  const { data: income } = useQuery({
+    queryKey: ["income"],
+    queryFn: fetchIncome,
+  });
+
   if (isLoading || !data) {
     return (
       <div className="grid gap-4 md:grid-cols-3">
@@ -88,6 +95,8 @@ export const DashboardPage = () => {
 
   return (
     <div className="space-y-6">
+      <IncomeProjections income={income ?? null} />
+
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <p className="text-xs uppercase tracking-wide text-slate-400">

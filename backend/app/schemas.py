@@ -155,6 +155,32 @@ class TransactionUpdate(BaseModel):
     budget_id: Optional[int] = None
 
 
+class IncomeBase(BaseModel):
+    amount: Decimal = Field(..., max_digits=10, decimal_places=2, gt=0)
+    frequency: str = Field(..., pattern="^(weekly|biweekly|monthly|yearly)$")
+
+
+class IncomeCreate(IncomeBase):
+    pass
+
+
+class IncomeUpdate(BaseModel):
+    amount: Optional[Decimal] = Field(None, max_digits=10, decimal_places=2, gt=0)
+    frequency: Optional[str] = Field(None, pattern="^(weekly|biweekly|monthly|yearly)$")
+
+
+class IncomeRead(IncomeBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer("amount")
+    def serialize_amount(self, v: Decimal) -> float:
+        return float(v)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import { fetchIncome, upsertIncome } from "../../lib/income-api";
-import type { IncomeFrequency } from "../../lib/types";
+import type { Income, IncomeFrequency } from "../../lib/types";
 import { IncomeProjections } from "./IncomeProjections";
 
 const FREQUENCY_OPTIONS: { value: IncomeFrequency; label: string }[] = [
@@ -56,6 +56,20 @@ export const IncomePage: React.FC = () => {
 
     mutation.mutate({ amount: numericAmount, frequency });
   };
+
+  // Reflect what's currently in the form, not just the last saved value,
+  // so the projection updates live as the user types or changes frequency.
+  const numericAmount = Number(amount);
+  const previewIncome: Income | null =
+    amount && numericAmount > 0
+      ? {
+          id: income?.id ?? 0,
+          amount: numericAmount,
+          frequency,
+          created_at: income?.created_at,
+          updated_at: income?.updated_at,
+        }
+      : income ?? null;
 
   return (
     <div className="space-y-4">
@@ -113,7 +127,7 @@ export const IncomePage: React.FC = () => {
           )}
         </Card>
 
-        <IncomeProjections income={income ?? null} />
+        <IncomeProjections income={previewIncome} />
       </div>
     </div>
   );

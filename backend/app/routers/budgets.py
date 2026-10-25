@@ -169,26 +169,35 @@ def get_budget_status(
             detail="Budget not found.",
         )
 
-    # Sum of expense transactions within the budget period
-    # Only count transactions that are directly linked to this budget
-    query = (
-        db.query(func.sum(models.Transaction.amount))
-        .filter(models.Transaction.type == "expense")
-        .filter(models.Transaction.budget_id == budget_id)
-        .filter(models.Transaction.user_id == current_user.id)
-        .filter(models.Transaction.date >= budget.start_date)
-        .filter(models.Transaction.date <= budget.end_date)
-    )
-    
-    total_expense_raw = query.scalar()
+    # Sum of transactions within the budget period, by type.
+    # Only count transactions that are directly linked to this budget.
+    def sum_for_type(tx_type: str) -> Decimal:
+        total = (
+            db.query(func.sum(models.Transaction.amount))
+            .filter(models.Transaction.type == tx_type)
+            .filter(models.Transaction.budget_id == budget_id)
+            .filter(models.Transaction.user_id == current_user.id)
+            .filter(models.Transaction.date >= budget.start_date)
+            .filter(models.Transaction.date <= budget.end_date)
+            .scalar()
+        )
+        return Decimal(total or 0)
 
-    total_expense = Decimal(total_expense_raw or 0)
-    remaining = Decimal(budget.limit) - total_expense
+    total_expense = sum_for_type("expense")
+    total_investment = sum_for_type("investment")
+    total_income = sum_for_type("income")
+
+    # Investments are set aside out of the budget; income tops it back up.
+    remaining = (
+        Decimal(budget.limit) - total_expense - total_investment + total_income
+    )
     exceeded = remaining < 0
 
     return schemas.BudgetStatus(
         budget=budget,
         total_expense=total_expense,
+        total_investment=total_investment,
+        total_income=total_income,
         remaining=remaining,
         exceeded=exceeded,
     )

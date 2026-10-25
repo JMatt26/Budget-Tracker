@@ -518,12 +518,14 @@ export const BudgetDetailPage: React.FC = () => {
 
   const numericContent = useMemo(() => {
     const totalExpense = status?.total_expense ?? 0;
+    const totalInvested = status?.total_investment ?? 0;
+    const totalSaved = status?.total_income ?? 0;
     const remaining = status?.remaining ?? 0;
     const limit = budget ? Number(budget.limit ?? 0) : 0;
     const progress = limit ? Math.min(100, (totalExpense / limit) * 100) : 0;
     return (
       <div className="space-y-4">
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-5">
           <Card>
             <p className="text-xs uppercase tracking-wide text-slate-400">
               Limit
@@ -542,13 +544,29 @@ export const BudgetDetailPage: React.FC = () => {
           </Card>
           <Card>
             <p className="text-xs uppercase tracking-wide text-slate-400">
+              Invested
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-blue-400">
+              {formatCurrency(totalInvested)}
+            </p>
+          </Card>
+          <Card>
+            <p className="text-xs uppercase tracking-wide text-slate-400">
+              Saved
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-amber-400">
+              {formatCurrency(totalSaved)}
+            </p>
+          </Card>
+          <Card>
+            <p className="text-xs uppercase tracking-wide text-slate-400">
               Remaining
             </p>
             <p className="mt-2 text-2xl font-semibold text-emerald-400">
               {formatCurrency(remaining)}
             </p>
           </Card>
-          <Card className="md:col-span-3">
+          <Card className="md:col-span-5">
             <p className="text-xs text-slate-400 uppercase tracking-wide">
               Progress
             </p>

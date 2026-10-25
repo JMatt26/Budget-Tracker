@@ -100,7 +100,7 @@ export const DashboardPage = () => {
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <p className="text-xs uppercase tracking-wide text-slate-400">
-            Income
+            Saved
           </p>
           <p className="mt-2 text-2xl font-semibold text-emerald-400">
             ${total_income.toFixed(2)}

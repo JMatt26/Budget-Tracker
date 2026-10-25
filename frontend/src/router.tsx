@@ -7,6 +7,7 @@ import {
   
   import { AppLayout } from "./components/layout/AppLayout";
   import { DashboardPage } from "./features/dashboard/DashboardPage";
+  import { MetricProjectionPage } from "./features/dashboard/MetricProjectionPage";
   import { TransactionsPage } from "./features/transactions/TransactionsPage";
 import { BudgetsPage } from "./features/budgets/BudgetsPage";
   import { CategoriesPage } from "./features/categories/CategoriesPage";
@@ -49,6 +50,7 @@ import React from "react";
           }
         >
           <Route index element={<DashboardPage />} />
+          <Route path="projections/:metric" element={<MetricProjectionPage />} />
           <Route path="transactions" element={<TransactionsPage />} />
           <Route path="budgets" element={<BudgetsPage />} />
           <Route path="budgets/:budgetId" element={<BudgetDetailPage />} />

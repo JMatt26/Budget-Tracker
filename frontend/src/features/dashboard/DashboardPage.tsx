@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
 import { Card } from "../../components/ui/Card";
 import { fetchIncome } from "../../lib/income-api";
@@ -43,6 +44,8 @@ const fetchSummary = async (): Promise<AnySummary> => {
 };
 
 export const DashboardPage = () => {
+  const navigate = useNavigate();
+
   const { data, isLoading } = useQuery({
     queryKey: ["summary"],
     queryFn: fetchSummary,
@@ -98,7 +101,10 @@ export const DashboardPage = () => {
       <IncomeProjections income={income ?? null} />
 
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
+        <Card
+          className="cursor-pointer transition hover:border-sky-500/50 hover:bg-slate-900/80"
+          onClick={() => navigate("/projections/saved")}
+        >
           <p className="text-xs uppercase tracking-wide text-slate-400">
             Saved
           </p>
@@ -106,7 +112,10 @@ export const DashboardPage = () => {
             ${total_income.toFixed(2)}
           </p>
         </Card>
-        <Card>
+        <Card
+          className="cursor-pointer transition hover:border-sky-500/50 hover:bg-slate-900/80"
+          onClick={() => navigate("/projections/investments")}
+        >
           <p className="text-xs uppercase tracking-wide text-slate-400">
             Investments
           </p>
@@ -114,7 +123,10 @@ export const DashboardPage = () => {
             ${total_investment.toFixed(2)}
           </p>
         </Card>
-        <Card>
+        <Card
+          className="cursor-pointer transition hover:border-sky-500/50 hover:bg-slate-900/80"
+          onClick={() => navigate("/projections/expenses")}
+        >
           <p className="text-xs uppercase tracking-wide text-slate-400">
             Expenses
           </p>
@@ -122,7 +134,10 @@ export const DashboardPage = () => {
             ${total_expense.toFixed(2)}
           </p>
         </Card>
-        <Card>
+        <Card
+          className="cursor-pointer transition hover:border-sky-500/50 hover:bg-slate-900/80"
+          onClick={() => navigate("/projections/net")}
+        >
           <p className="text-xs uppercase tracking-wide text-slate-400">
             Net
           </p>

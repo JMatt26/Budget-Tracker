@@ -35,6 +35,8 @@ export interface Budget {
 export interface BudgetStatus {
   budget: Budget;
   total_expense: number;
+  total_investment: number;
+  total_income: number;
   remaining: number;
   exceeded: boolean;
 }

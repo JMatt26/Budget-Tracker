@@ -87,6 +87,8 @@ class BudgetRead(BudgetBase):
 class BudgetStatus(BaseModel):
     budget: BudgetRead
     total_expense: Decimal
+    total_investment: Decimal
+    total_income: Decimal
     remaining: Decimal
     exceeded: bool
 

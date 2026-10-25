@@ -119,3 +119,58 @@ def test_budget_status_tracks_expenses(auth_client):
     assert totals_expense == "150.00"
     assert remaining == "350.00"
     assert exceeded is False
+
+
+def test_budget_status_tracks_investment_and_income(auth_client):
+    today = date.today()
+    end = today + timedelta(days=30)
+
+    budget_payload = {
+        "name": "Mixed Budget",
+        "limit": "500.00",
+        "start_date": today.isoformat(),
+        "end_date": end.isoformat(),
+    }
+    budget_resp = auth_client.post("/budgets/", json=budget_payload)
+    assert budget_resp.status_code == 201, budget_resp.text
+    budget_id = budget_resp.json()["id"]
+
+    expense_payload = {
+        "amount": "100.00",
+        "description": "Groceries",
+        "date": today.isoformat(),
+        "type": "expense",
+        "category_id": None,
+        "budget_id": budget_id,
+    }
+    investment_payload = {
+        "amount": "50.00",
+        "description": "Brokerage transfer",
+        "date": today.isoformat(),
+        "type": "investment",
+        "category_id": None,
+        "budget_id": budget_id,
+    }
+    income_payload = {
+        "amount": "30.00",
+        "description": "Refund",
+        "date": today.isoformat(),
+        "type": "income",
+        "category_id": None,
+        "budget_id": budget_id,
+    }
+
+    assert auth_client.post("/transactions/", json=expense_payload).status_code == 201
+    assert auth_client.post("/transactions/", json=investment_payload).status_code == 201
+    assert auth_client.post("/transactions/", json=income_payload).status_code == 201
+
+    status_resp = auth_client.get(f"/budgets/{budget_id}/status")
+    assert status_resp.status_code == 200, status_resp.text
+
+    data = status_resp.json()
+    assert data["total_expense"] == "100.00"
+    assert data["total_investment"] == "50.00"
+    assert data["total_income"] == "30.00"
+    # 500 - 100 (expense) - 50 (investment) + 30 (income)
+    assert data["remaining"] == "380.00"
+    assert data["exceeded"] is False

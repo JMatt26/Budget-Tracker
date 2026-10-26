@@ -3,13 +3,14 @@ from decimal import Decimal
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy import exists, func
+from sqlalchemy.orm import Session, aliased
 
 from .. import models, schemas
 from ..db import get_db
 from ..auth import get_current_user
 from ..income_utils import monthly_income_total
+from ..budget_cycles import roll_over_budgets, series_key
 
 router = APIRouter(prefix="/budgets", tags=["budgets"])
 
@@ -47,6 +48,8 @@ def create_budget(
         **budget_in.model_dump(), user_id=current_user.id
     )
     db.add(budget)
+    db.flush()
+    budget.series_id = budget.id
     db.commit()
     db.refresh(budget)
     return _read(budget, monthly_income_total(db, current_user.id))
@@ -59,8 +62,18 @@ def list_budgets(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    roll_over_budgets(db, current_user.id)
+
+    # Only the current cycle of each recurring budget; past cycles are
+    # reachable through /budgets/{id}/history.
+    later = aliased(models.Budget)
     query = db.query(models.Budget).filter(
-        models.Budget.user_id == current_user.id
+        models.Budget.user_id == current_user.id,
+        ~exists().where(
+            later.user_id == models.Budget.user_id,
+            later.series_id == models.Budget.series_id,
+            later.start_date > models.Budget.start_date,
+        ),
     )
 
     total = query.count()
@@ -93,6 +106,7 @@ def get_budget(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
+    roll_over_budgets(db, current_user.id)
     budget = (
         db.query(models.Budget)
         .filter(
@@ -107,6 +121,59 @@ def get_budget(
             detail="Budget not found.",
         )
     return _read(budget, monthly_income_total(db, current_user.id))
+
+
+@router.get("/{budget_id}/history", response_model=schemas.BudgetHistory)
+def get_budget_history(
+    budget_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Every cycle of this budget's series, newest first, with its totals."""
+    roll_over_budgets(db, current_user.id)
+    budget = _get_owned_budget(db, budget_id, current_user.id)
+
+    cycles = (
+        db.query(models.Budget)
+        .filter(
+            models.Budget.user_id == current_user.id,
+            models.Budget.series_id == series_key(budget),
+        )
+        .order_by(models.Budget.start_date.desc())
+        .all()
+    ) or [budget]
+
+    totals = {}
+    for cycle_id, tx_type, total in (
+        db.query(
+            models.Transaction.budget_id,
+            models.Transaction.type,
+            func.sum(models.Transaction.amount),
+        )
+        .filter(
+            models.Transaction.user_id == current_user.id,
+            models.Transaction.budget_id.in_([c.id for c in cycles]),
+        )
+        .group_by(models.Transaction.budget_id, models.Transaction.type)
+    ):
+        totals[(cycle_id, tx_type)] = Decimal(total or 0)
+
+    return schemas.BudgetHistory(
+        current_id=cycles[0].id,
+        items=[
+            schemas.BudgetCycle(
+                id=c.id,
+                name=c.name,
+                start_date=c.start_date,
+                end_date=c.end_date,
+                is_current=i == 0,
+                total_expense=totals.get((c.id, "expense"), Decimal(0)),
+                total_investment=totals.get((c.id, "investment"), Decimal(0)),
+                total_income=totals.get((c.id, "income"), Decimal(0)),
+            )
+            for i, c in enumerate(cycles)
+        ],
+    )
 
 
 @router.put("/{budget_id}", response_model=schemas.BudgetRead)
@@ -160,14 +227,27 @@ def delete_budget(
             detail="Budget not found.",
         )
 
-    # Remove budget_id from all transactions that reference this budget
-    db.query(models.Transaction).filter(
-        models.Transaction.budget_id == budget_id,
-        models.Transaction.user_id == current_user.id
-    ).update({models.Transaction.budget_id: None})
+    # A recurring budget is deleted with all of its past cycles, otherwise
+    # the previous cycle would become current and roll over again.
+    cycles = (
+        db.query(models.Budget)
+        .filter(
+            models.Budget.user_id == current_user.id,
+            models.Budget.series_id == series_key(budget),
+        )
+        .all()
+    ) or [budget]
+    cycle_ids = [c.id for c in cycles]
 
-    # Delete the budget (this will cascade delete budget_categories due to the relationship)
-    db.delete(budget)
+    # Remove budget_id from all transactions that reference these budgets
+    db.query(models.Transaction).filter(
+        models.Transaction.budget_id.in_(cycle_ids),
+        models.Transaction.user_id == current_user.id
+    ).update({models.Transaction.budget_id: None}, synchronize_session=False)
+
+    # Deleting cascades to budget_categories and targets via the relationships
+    for cycle in cycles:
+        db.delete(cycle)
     db.commit()
 
 

@@ -61,6 +61,7 @@ const BudgetStatusCard = ({ budget }: { budget: Budget }) => {
           </h3>
           <span className="rounded-md bg-line-soft px-2 py-0.5 text-xs font-medium text-muted">
             {describeBudgetPeriod(budget.start_date, budget.end_date)}
+            {budget.recurrence && " · Repeats"}
           </span>
           {budget.category && (
             <p className="text-xs text-muted">
@@ -76,7 +77,9 @@ const BudgetStatusCard = ({ budget }: { budget: Budget }) => {
             onClick={() => {
               if (
                 window.confirm(
-                  `Are you sure you want to delete "${budget.name}"? This will remove the budget association from all transactions.`
+                  budget.recurrence
+                    ? `Are you sure you want to delete "${budget.name}" and all of its past cycles? This will remove the budget association from their transactions.`
+                    : `Are you sure you want to delete "${budget.name}"? This will remove the budget association from all transactions.`
                 )
               ) {
                 deleteBudgetMutation.mutate(budget.id);
@@ -211,6 +214,8 @@ const BudgetForm = ({ onClose }: { onClose: () => void }) => {
         name: formData.name.trim(),
         start_date: formData.startDate,
         end_date: formData.endDate,
+        // Monthly and weekly budgets reset each cycle; custom dates don't repeat.
+        recurrence: formData.period === "specified" ? null : formData.period,
       };
       const { data } = await api.post("/budgets", payload);
       return data;
@@ -314,8 +319,8 @@ const BudgetForm = ({ onClose }: { onClose: () => void }) => {
           <div className="rounded-xl bg-canvas px-4 py-3 text-sm">
             <p className="text-muted">
               {formData.period === "monthly"
-                ? "This budget will cover the current month"
-                : "This budget will cover the current week"}
+                ? "Covers the current month and resets each month. Past months stay in Historic View."
+                : "Covers the current week and resets each week. Past weeks stay in Historic View."}
             </p>
             <p className="mt-1 font-medium text-ink">
               {formData.startDate && formData.endDate

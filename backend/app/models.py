@@ -81,6 +81,12 @@ class Budget(Base):
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
 
+    # weekly | monthly: a new cycle starts when this one ends; null = one-off
+    recurrence = Column(String(20), nullable=True)
+    # Cycles of one recurring budget share a series_id (the first cycle's id).
+    # The cycle with the latest start_date is the current one.
+    series_id = Column(Integer, index=True, nullable=True)
+
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     user = relationship("User", back_populates="budgets")
 

@@ -26,12 +26,17 @@ export interface Transaction {
   created_at?: string;
 }
 
+export type BudgetRecurrence = "weekly" | "monthly";
+
 export interface Budget {
   id: number;
   name: string;
   limit: number;
   start_date: string;
   end_date: string;
+  // A recurring budget starts a fresh cycle when this one ends.
+  recurrence?: BudgetRecurrence | null;
+  series_id?: number | null;
   created_at?: string;
   updated_at?: string;
   category?: Category | null;

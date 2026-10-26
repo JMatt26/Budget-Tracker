@@ -24,7 +24,9 @@ app = FastAPI(title=settings.app_name, version=settings.app_version)
 def create_tables():
     from app.db import engine, Base
     from app import models
+    from app.schema_upgrades import upgrade_schema
     Base.metadata.create_all(bind=engine)
+    upgrade_schema(engine)
 
 logger = logging.getLogger("app.request")
 

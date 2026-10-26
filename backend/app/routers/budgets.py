@@ -4,6 +4,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import exists, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
 
 from .. import models, schemas
@@ -201,7 +202,14 @@ def update_budget(
     for field, value in update_data.items():
         setattr(budget, field, value)
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Another cycle of this budget already starts on that date.",
+        )
     db.refresh(budget)
     return _read(budget, monthly_income_total(db, current_user.id))
 

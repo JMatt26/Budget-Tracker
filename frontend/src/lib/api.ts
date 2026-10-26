@@ -1,8 +1,26 @@
 import axios, { AxiosError } from "axios";
 import { getToken } from "./auth";
 
-const baseURL =
-  import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+const LOCAL_API_URL = "http://localhost:8000";
+
+// VITE_API_URL is baked in at build time. A production build without it would
+// silently ship a site that calls http://localhost:8000 from every visitor's
+// browser, so fail the build/startup loudly instead.
+export const resolveApiBaseUrl = (env: {
+  PROD?: boolean;
+  VITE_API_URL?: string;
+}): string => {
+  const url = env.VITE_API_URL?.trim();
+  if (url) return url.replace(/\/+$/, "");
+  if (env.PROD) {
+    throw new Error(
+      "VITE_API_URL is not set. Set it to the API's URL before building for production."
+    );
+  }
+  return LOCAL_API_URL;
+};
+
+const baseURL = resolveApiBaseUrl(import.meta.env);
 
 export const api = axios.create({
   baseURL,
@@ -25,8 +43,6 @@ api.interceptors.request.use(
     // Set Authorization header if token exists
     if (token) {
       config.headers["Authorization"] = `Bearer ${token}`;
-    } else {
-      console.warn("No authentication token found for request:", config.method, config.url);
     }
     
     return config;

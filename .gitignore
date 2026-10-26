@@ -1,0 +1,20 @@
+.env
+.env.*
+!.env.example
+
+node_modules
+
+.DS_Store
+
+.vite
+dist/
+
+# Local databases and backups of them (can contain real data)
+*.db
+*.db-*
+*.bak
+*.bak-*
+sql_app.db*
+
+# Private notes that must not be published (this repo is public)
+*.local.md

@@ -140,6 +140,39 @@ const PERIOD_OPTIONS: { value: BudgetPeriod; label: string }[] = [
   { value: "specified", label: "Custom dates" },
 ];
 
+// Format a date as YYYY-MM-DD in the local timezone
+const formatLocalDate = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+// Helper functions to calculate dates
+const getMonthlyDates = () => {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return {
+    startDate: formatLocalDate(start),
+    endDate: formatLocalDate(end),
+  };
+};
+
+const getWeeklyDates = () => {
+  const now = new Date();
+  const dayOfWeek = now.getDay();
+  const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Adjust to Monday
+  const start = new Date(now.getFullYear(), now.getMonth(), diff);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return {
+    startDate: formatLocalDate(start),
+    endDate: formatLocalDate(end),
+  };
+};
+
 const BudgetForm = ({ onClose }: { onClose: () => void }) => {
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState({
@@ -150,43 +183,10 @@ const BudgetForm = ({ onClose }: { onClose: () => void }) => {
   });
   const [error, setError] = useState<string | null>(null);
 
-  // Helper function to format date as YYYY-MM-DD in local timezone
-  const formatLocalDate = (date: Date): string => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  };
-
   // Helper function to format date string (YYYY-MM-DD) for display
   const formatDateForDisplay = (dateStr: string): string => {
     const [year, month, day] = dateStr.split("-");
     return `${month}/${day}/${year}`;
-  };
-
-  // Helper functions to calculate dates
-  const getMonthlyDates = () => {
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    return {
-      startDate: formatLocalDate(start),
-      endDate: formatLocalDate(end),
-    };
-  };
-
-  const getWeeklyDates = () => {
-    const now = new Date();
-    const dayOfWeek = now.getDay();
-    const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Adjust to Monday
-    const start = new Date(now.getFullYear(), now.getMonth(), diff);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(start);
-    end.setDate(start.getDate() + 6);
-    return {
-      startDate: formatLocalDate(start),
-      endDate: formatLocalDate(end),
-    };
   };
 
   // Update dates when period changes

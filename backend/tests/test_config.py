@@ -1,6 +1,27 @@
 # tests/test_config.py
 import os
+
+import pytest
+from starlette.testclient import TestClient
+
 from app.core import config as config_module
+from app.core.config import ConfigError
+from app.main import create_app
+
+
+@pytest.fixture(autouse=True)
+def _reset_settings_cache():
+    """Each test here builds its own settings; don't leak them to other tests."""
+    yield
+    config_module.get_settings.cache_clear()
+
+
+GOOD_PROD_ENV = {
+    "BUDGET_APP_ENV": "prod",
+    "BUDGET_APP_DATABASE_URL": "postgresql://u:p@host/db?sslmode=require",
+    "BUDGET_APP_SECRET_KEY": "x" * 48,
+    "BUDGET_APP_CORS_ORIGINS": "https://app.example.com",
+}
 
 
 def _fresh_settings(monkeypatch, env: dict):
@@ -69,12 +90,89 @@ def test_env_overrides(monkeypatch):
 
 
 def test_prod_profile(monkeypatch):
-    settings = _fresh_settings(
-        monkeypatch,
-        {"BUDGET_APP_ENV": "prod"},
-    )
+    settings = _fresh_settings(monkeypatch, GOOD_PROD_ENV)
 
     assert settings.env == "prod"
     assert settings.is_prod is True
     assert settings.is_dev is False
     assert settings.is_test is False
+
+
+def test_valid_prod_config_loads(monkeypatch):
+    settings = _fresh_settings(monkeypatch, GOOD_PROD_ENV)
+
+    assert settings.is_prod
+    assert settings.database_url.startswith("postgresql+psycopg://")
+    assert settings.backend_cors_origins == ["https://app.example.com"]
+    assert settings.docs_enabled is False
+
+
+@pytest.mark.parametrize(
+    "override, variable",
+    [
+        ({"BUDGET_APP_SECRET_KEY": "dev-secret-key"}, "BUDGET_APP_SECRET_KEY"),
+        ({"BUDGET_APP_SECRET_KEY": "too-short"}, "BUDGET_APP_SECRET_KEY"),
+        ({"BUDGET_APP_CORS_ORIGINS": "*"}, "BUDGET_APP_CORS_ORIGINS"),
+        ({"BUDGET_APP_CORS_ORIGINS": ""}, "BUDGET_APP_CORS_ORIGINS"),
+        ({"BUDGET_APP_CORS_ORIGINS": '["https://a.com","*"]'}, "BUDGET_APP_CORS_ORIGINS"),
+        ({"BUDGET_APP_DATABASE_URL": "sqlite:///./sql_app.db"}, "BUDGET_APP_DATABASE_URL"),
+    ],
+)
+def test_prod_refuses_unsafe_settings(monkeypatch, override, variable):
+    with pytest.raises(ConfigError) as exc:
+        _fresh_settings(monkeypatch, {**GOOD_PROD_ENV, **override})
+
+    assert variable in str(exc.value)
+
+
+def test_prod_error_never_prints_secret_values(monkeypatch):
+    secret = "dev-secret-key"
+    with pytest.raises(ConfigError) as exc:
+        _fresh_settings(
+            monkeypatch,
+            {**GOOD_PROD_ENV, "BUDGET_APP_SECRET_KEY": secret, "BUDGET_APP_DATABASE_URL": "sqlite:///./x.db"},
+        )
+    assert secret not in str(exc.value)
+    assert "x.db" not in str(exc.value)
+
+
+def test_unsafe_settings_are_fine_outside_prod(monkeypatch):
+    settings = _fresh_settings(monkeypatch, {"BUDGET_APP_ENV": "dev"})
+    assert settings.jwt_secret_key == "dev-secret-key"
+    assert settings.backend_cors_origins == ["*"]
+
+
+def test_unknown_env_is_rejected(monkeypatch):
+    # a typo like "production" must not silently run with dev behaviour
+    with pytest.raises(ConfigError) as exc:
+        _fresh_settings(monkeypatch, {"BUDGET_APP_ENV": "production"})
+    assert "BUDGET_APP_ENV" in str(exc.value)
+
+
+def test_timezone_default_and_validation(monkeypatch):
+    assert _fresh_settings(monkeypatch, {}).timezone == "America/Toronto"
+    assert _fresh_settings(monkeypatch, {"BUDGET_APP_TIMEZONE": "UTC"}).timezone == "UTC"
+    with pytest.raises(ConfigError) as exc:
+        _fresh_settings(monkeypatch, {"BUDGET_APP_TIMEZONE": "Mars/Olympus"})
+    assert "BUDGET_APP_TIMEZONE" in str(exc.value)
+
+
+def test_debug_flag(monkeypatch):
+    assert _fresh_settings(monkeypatch, {}).debug is False
+    assert _fresh_settings(monkeypatch, {"BUDGET_APP_DEBUG": "true"}).debug is True
+
+
+def test_docs_are_hidden_in_prod_and_shown_in_dev(monkeypatch):
+    prod = TestClient(create_app(_fresh_settings(monkeypatch, GOOD_PROD_ENV)))
+    for path in ("/docs", "/redoc", "/openapi.json"):
+        assert prod.get(path).status_code == 404, path
+    assert prod.get("/health").status_code == 200
+
+    dev = TestClient(create_app(_fresh_settings(monkeypatch, {"BUDGET_APP_ENV": "dev"})))
+    for path in ("/docs", "/redoc", "/openapi.json"):
+        assert dev.get(path).status_code == 200, path
+
+
+def test_docs_can_be_enabled_in_prod_with_debug(monkeypatch):
+    settings = _fresh_settings(monkeypatch, {**GOOD_PROD_ENV, "BUDGET_APP_DEBUG": "true"})
+    assert TestClient(create_app(settings)).get("/docs").status_code == 200

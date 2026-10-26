@@ -74,3 +74,14 @@ def test_login_invalid_credentials(client: TestClient):
     )
 
     assert resp.status_code == 401
+
+
+def test_current_user_dependency_is_sync():
+    """It queries the database, so it must run in a worker thread. As an
+    `async def` it blocks the event loop and, once the connection pool is busy,
+    freezes the whole worker (found by load-testing against Postgres)."""
+    import inspect
+
+    from app.auth import get_current_user
+
+    assert not inspect.iscoroutinefunction(get_current_user)

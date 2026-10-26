@@ -1,7 +1,14 @@
 .env
+.env.*
+!.env.example
 .venv
 
-sql_app.db
+# Local databases and backups of them (can contain real data)
+sql_app.db*
+*.db
+*.db-*
+*.bak
+*.bak-*
 
 # Python Cache
 __pycache__/

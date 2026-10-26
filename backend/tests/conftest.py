@@ -1,19 +1,42 @@
+import os
+from datetime import date
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import StaticPool, create_engine
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
+from app.core.config import normalize_database_url
 from app.db import Base, get_db
 from app.main import app
 
-# In-memory DB just for tests
-SQLALCHEMY_DATABASE_URL = "sqlite://"
+def _has_postgres() -> bool:
+    return os.environ.get("TEST_DATABASE_URL", "").startswith(("postgres://", "postgresql"))
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
+
+def _make_engine():
+    """In-memory SQLite by default; a real PostgreSQL server when
+    TEST_DATABASE_URL is set, so the same suite can prove the app on both."""
+    if not _has_postgres():
+        return create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+
+    url = make_url(normalize_database_url(os.environ["TEST_DATABASE_URL"]))
+    # every test drops and recreates all tables, so refuse anything that
+    # doesn't look like a scratch database
+    if "test" not in (url.database or "").lower():
+        raise pytest.UsageError(
+            "TEST_DATABASE_URL must point at a database whose name contains 'test': "
+            "the suite drops and recreates every table in it."
+        )
+    return create_engine(url, pool_pre_ping=True)
+
+
+engine = _make_engine()
 
 TestingSessionLocal = sessionmaker(
     autocommit=False,
@@ -39,6 +62,49 @@ def clean_db():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     yield
+
+def pytest_collection_modifyitems(config, items):
+    """Tests marked `postgres` need a real server (TEST_DATABASE_URL).
+
+    Locally they skip without one. A CI job that is supposed to run them sets
+    REQUIRE_POSTGRES_TESTS=1, and then a missing server is an error, never a
+    quiet skip: otherwise a broken service container would leave CI green
+    while testing nothing.
+    """
+    if _has_postgres():
+        return
+    if os.environ.get("REQUIRE_POSTGRES_TESTS") == "1":
+        raise pytest.UsageError(
+            "REQUIRE_POSTGRES_TESTS=1 but TEST_DATABASE_URL does not point at PostgreSQL"
+        )
+    skip = pytest.mark.skip(reason="needs PostgreSQL: set TEST_DATABASE_URL")
+    for item in items:
+        if "postgres" in item.keywords:
+            item.add_marker(skip)
+
+
+@pytest.fixture(autouse=True)
+def todays_date_is_the_machines(monkeypatch):
+    """The app decides "today" in its configured timezone, but these tests
+    build their dates from date.today(); keep the two equal so the suite
+    doesn't flake for a few hours each day when the machine (e.g. CI, in UTC)
+    and the app timezone are on different dates. The timezone logic itself is
+    tested with an injected clock in test_budget_cycles_safety.py."""
+    monkeypatch.setattr("app.budget_cycles.today_local", date.today)
+
+
+@pytest.fixture(autouse=True)
+def rate_limiting_is_off_by_default():
+    """Most tests register/login many users from one client IP; the dedicated
+    tests in test_rate_limit.py switch the limiter on."""
+    from app.rate_limit import limiter
+
+    limiter.enabled = False
+    limiter.reset()
+    yield
+    limiter.enabled = False
+    limiter.reset()
+
 
 @pytest.fixture()
 def client():
@@ -70,3 +136,24 @@ def auth_client(client: TestClient) -> TestClient:
 
     client.headers.update({"Authorization": f"Bearer {token}"})
     return client
+
+
+@pytest.fixture
+def make_user_client():
+    """Factory returning a fresh logged-in TestClient for the given email, so a
+    test can act as several users at once."""
+
+    def _make(email: str, password: str = "testpassword123") -> TestClient:
+        c = TestClient(app)
+        resp = c.post("/auth/register", json={"email": email, "password": password})
+        assert resp.status_code == 201, resp.text
+        resp = c.post(
+            "/auth/login",
+            data={"username": email, "password": password},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        assert resp.status_code == 200, resp.text
+        c.headers.update({"Authorization": f"Bearer {resp.json()['access_token']}"})
+        return c
+
+    return _make

@@ -2,18 +2,35 @@ import React, { useMemo, useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, ComposedChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
-import { Card } from "../../components/ui/Card";
-import { Button } from "../../components/ui/Button";
+import clsx from "clsx";
+import { Card, CardHeader, Skeleton } from "../../components/ui/Card";
+import { Button, IconButton } from "../../components/ui/Button";
+import { Modal } from "../../components/ui/Modal";
+import { Field, FormActions, FormError } from "../../components/ui/Field";
+import { Segmented, Tabs } from "../../components/ui/Segmented";
+import { Icon } from "../../components/ui/Icon";
+import {
+  CategoryAvatar,
+  ProgressBar,
+  ProgressRing,
+  TONE_TEXT,
+  TypeBadge,
+  budgetTone,
+} from "../../components/ui/Progress";
 import { fetchBudget, fetchBudgetStatus } from "../../lib/budget-api";
 import { api } from "../../lib/api";
-import type { BudgetStatus, Category, BudgetCategory, Transaction, Budget } from "../../lib/types";
+import { categoryColor, formatMoney, formatSignedMoney, TYPE_META } from "../../lib/format";
+import type { Category, BudgetCategory, Transaction, Budget } from "../../lib/types";
 
-const formatCurrency = (value: number | undefined | null) =>
-  `$${Number(value ?? 0).toFixed(2)}`;
+const formatCurrency = formatMoney;
 
 const formatDate = (dateStr: string | null | undefined): string => {
   if (!dateStr) return "";
-  const date = new Date(dateStr);
+  // Date-only strings parse as UTC midnight, which shows the previous day
+  // west of UTC; read them as local dates instead.
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(dateStr)
+    ? new Date(`${dateStr}T00:00:00`)
+    : new Date(dateStr);
   return date.toLocaleDateString(undefined, {
     year: "numeric",
     month: "short",
@@ -77,6 +94,12 @@ const fetchCategories = async (): Promise<Category[]> => {
   return data.items ?? data;
 };
 
+const TYPE_OPTIONS: { value: "income" | "expense" | "investment"; label: string }[] = [
+  { value: "expense", label: "Expense" },
+  { value: "income", label: "Income" },
+  { value: "investment", label: "Investment" },
+];
+
 type BudgetCategoryFormData = {
   mode: "existing" | "new";
   category_id: string;
@@ -114,14 +137,14 @@ const BudgetCategoryForm = ({
       const payload: any = {
         limit: Number(data.limit),
       };
-      
+
       if (data.mode === "existing") {
         payload.category_id = Number(data.category_id);
       } else {
         payload.category_name = data.category_name.trim();
         payload.category_type = data.category_type;
       }
-      
+
       const { data: response } = await api.post(`/budgets/${budgetId}/categories`, payload);
       return response;
     },
@@ -140,132 +163,109 @@ const BudgetCategoryForm = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    
+
     if (!formData.limit || Number(formData.limit) <= 0) {
       setError("Limit must be greater than 0");
       return;
     }
-    
+
     if (formData.mode === "existing" && !formData.category_id) {
       setError("Please select a category");
       return;
     }
-    
+
     if (formData.mode === "new" && !formData.category_name.trim()) {
       setError("Category name is required");
       return;
     }
-    
+
     mutation.mutate(formData);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <Card className="w-full max-w-md">
-        <h2 className="mb-4 text-lg font-semibold">Add Category to Budget</h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">Mode</label>
+    <Modal title="Add category to budget" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <Segmented
+          label="Mode"
+          fullWidth
+          options={[
+            { value: "existing", label: "Use existing" },
+            { value: "new", label: "Create new" },
+          ]}
+          value={formData.mode}
+          onChange={(mode) => setFormData({ ...formData, mode })}
+        />
+
+        {formData.mode === "existing" ? (
+          <Field label="Category">
             <select
-              value={formData.mode}
+              value={formData.category_id}
               onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  mode: e.target.value as "existing" | "new",
-                })
+                setFormData({ ...formData, category_id: e.target.value })
               }
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+              className="field"
             >
-              <option value="existing">Use Existing Category</option>
-              <option value="new">Create New Category</option>
+              <option value="">Select a category</option>
+              {categories?.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name} ({cat.type})
+                </option>
+              ))}
             </select>
-          </div>
-
-          {formData.mode === "existing" ? (
-            <div>
-              <label className="mb-1 block text-xs text-slate-400">Category</label>
-              <select
-                value={formData.category_id}
+          </Field>
+        ) : (
+          <>
+            <Field label="Category name">
+              <input
+                type="text"
+                value={formData.category_name}
                 onChange={(e) =>
-                  setFormData({ ...formData, category_id: e.target.value })
+                  setFormData({ ...formData, category_name: e.target.value })
                 }
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-              >
-                <option value="">Select a category</option>
-                {categories?.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name} ({cat.type})
-                  </option>
-                ))}
-              </select>
+                className="field"
+                placeholder="Category name"
+                maxLength={100}
+              />
+            </Field>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[13px] font-medium text-muted">Category type</span>
+              <Segmented
+                label="Category type"
+                fullWidth
+                options={TYPE_OPTIONS}
+                value={formData.category_type}
+                onChange={(category_type) => setFormData({ ...formData, category_type })}
+              />
             </div>
-          ) : (
-            <>
-              <div>
-                <label className="mb-1 block text-xs text-slate-400">Category Name</label>
-                <input
-                  type="text"
-                  value={formData.category_name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, category_name: e.target.value })
-                  }
-                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-                  placeholder="Category name"
-                  maxLength={100}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-slate-400">Category Type</label>
-                <select
-                  value={formData.category_type}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      category_type: e.target.value as "income" | "expense" | "investment",
-                    })
-                  }
-                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-                >
-                  <option value="expense">Expense</option>
-                  <option value="income">Income</option>
-                  <option value="investment">Investment</option>
-                </select>
-              </div>
-            </>
-          )}
+          </>
+        )}
 
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">Max Spending Limit</label>
-            <input
-              type="number"
-              step="0.01"
-              value={formData.limit}
-              onChange={(e) =>
-                setFormData({ ...formData, limit: e.target.value })
-              }
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-              placeholder="0.00"
-              min="0"
-            />
-          </div>
+        <Field label="Max spending limit">
+          <input
+            type="number"
+            step="0.01"
+            value={formData.limit}
+            onChange={(e) =>
+              setFormData({ ...formData, limit: e.target.value })
+            }
+            className="field"
+            placeholder="0.00"
+            min="0"
+          />
+        </Field>
 
-          {error && (
-            <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-400">
-              {error}
-            </div>
-          )}
+        {error && <FormError>{error}</FormError>}
 
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? "Adding..." : "Add Category"}
-            </Button>
-          </div>
-        </form>
-      </Card>
-    </div>
+        <FormActions>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={mutation.isPending}>
+            {mutation.isPending ? "Adding..." : "Add category"}
+          </Button>
+        </FormActions>
+      </form>
+    </Modal>
   );
 };
 
@@ -286,7 +286,7 @@ const BudgetTransactionForm = ({
 }) => {
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState<BudgetTransactionFormData>({
-    date: new Date().toISOString().slice(0, 10),
+    date: formatLocalDate(new Date()),
     amount: "",
     type: "expense",
     category_id: "",
@@ -318,6 +318,8 @@ const BudgetTransactionForm = ({
       queryClient.invalidateQueries({ queryKey: ["budget-categories", budgetId] });
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["budgets"] });
+      queryClient.invalidateQueries({ queryKey: ["summary"] });
+      queryClient.invalidateQueries({ queryKey: ["summary-month"] });
       onClose();
     },
     onError: (err: any) => {
@@ -342,114 +344,93 @@ const BudgetTransactionForm = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <Card className="w-full max-w-md">
-        <h2 className="mb-4 text-lg font-semibold">Add Transaction to Budget</h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-xs text-slate-400">Date</label>
-              <input
-                type="date"
-                value={formData.date}
-                onChange={(e) =>
-                  setFormData({ ...formData, date: e.target.value })
-                }
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-slate-400">Amount</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={formData.amount}
-                onChange={(e) =>
-                  setFormData({ ...formData, amount: e.target.value })
-                }
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-                placeholder="0.00"
-              />
-            </div>
-          </div>
+    <Modal variant="sheet" title="Add transaction to budget" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="flex min-h-full flex-col gap-5">
+        <Segmented
+          label="Type"
+          fullWidth
+          options={TYPE_OPTIONS}
+          value={formData.type}
+          onChange={(type) => setFormData({ ...formData, type })}
+        />
 
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">Type</label>
-            <select
-              value={formData.type}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  type: e.target.value as "income" | "expense" | "investment",
-                })
-              }
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-            >
-              <option value="expense">Expense</option>
-              <option value="income">Income</option>
-              <option value="investment">Investment</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">Category</label>
-            <select
-              value={formData.category_id}
-              onChange={(e) =>
-                setFormData({ ...formData, category_id: e.target.value })
-              }
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-            >
-              <option value="">None</option>
-              {categories?.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">
-              Description
-            </label>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Date">
             <input
-              type="text"
-              maxLength={255}
-              value={formData.description}
+              type="date"
+              value={formData.date}
               onChange={(e) =>
-                setFormData({ ...formData, description: e.target.value })
+                setFormData({ ...formData, date: e.target.value })
               }
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-              placeholder="Optional"
+              className="field"
             />
-          </div>
+          </Field>
+          <Field label="Amount">
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              inputMode="decimal"
+              value={formData.amount}
+              onChange={(e) =>
+                setFormData({ ...formData, amount: e.target.value })
+              }
+              className="field"
+              placeholder="0.00"
+              autoFocus
+            />
+          </Field>
+        </div>
 
-          {error && (
-            <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-400">
-              {error}
-            </div>
-          )}
+        <Field label="Category">
+          <select
+            value={formData.category_id}
+            onChange={(e) =>
+              setFormData({ ...formData, category_id: e.target.value })
+            }
+            className="field"
+          >
+            <option value="">None</option>
+            {categories?.map((cat) => (
+              <option key={cat.id} value={cat.id}>
+                {cat.name}
+              </option>
+            ))}
+          </select>
+        </Field>
 
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? "Adding..." : "Add Transaction"}
-            </Button>
-          </div>
-        </form>
-      </Card>
-    </div>
+        <Field label="Description">
+          <input
+            type="text"
+            maxLength={255}
+            value={formData.description}
+            onChange={(e) =>
+              setFormData({ ...formData, description: e.target.value })
+            }
+            className="field"
+            placeholder="Optional"
+          />
+        </Field>
+
+        {error && <FormError>{error}</FormError>}
+
+        <div className="mt-auto flex gap-2 pt-2">
+          <Button variant="secondary" size="lg" className="flex-1" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" size="lg" className="flex-[2]" disabled={mutation.isPending}>
+            {mutation.isPending ? "Adding..." : "Add transaction"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 };
 
 type TabKey = "numeric" | "graphs" | "charts";
 
 const tabLabels: Record<TabKey, string> = {
-  numeric: "Numeric",
+  numeric: "Overview",
   graphs: "Graphs",
   charts: "Charts",
 };
@@ -600,423 +581,307 @@ export const BudgetDetailPage: React.FC = () => {
 
   const loading = budgetLoading || statusLoading || categoriesLoading;
 
-  const numericContent = useMemo(() => {
-    const totalExpense = status?.total_expense ?? 0;
-    const totalInvested = status?.total_investment ?? 0;
-    const totalSaved = status?.total_income ?? 0;
-    const remaining = status?.remaining ?? 0;
+  const sortedTransactions = useMemo(
+    () =>
+      [...(budgetTransactions?.items || [])].sort((a, b) => {
+        let comparison = 0;
+        if (sortBy === "date") {
+          comparison = new Date(a.date).getTime() - new Date(b.date).getTime();
+        } else if (sortBy === "amount") {
+          comparison = Number(a.amount) - Number(b.amount);
+        } else if (sortBy === "category") {
+          const aCategory = a.category?.name || "Uncategorized";
+          const bCategory = b.category?.name || "Uncategorized";
+          comparison = aCategory.localeCompare(bCategory);
+        }
+        return sortOrder === "asc" ? comparison : -comparison;
+      }),
+    [budgetTransactions, sortBy, sortOrder]
+  );
+
+  const renderNumeric = () => {
+    const totalExpense = Number(status?.total_expense ?? 0);
+    const totalInvested = Number(status?.total_investment ?? 0);
+    const totalSaved = Number(status?.total_income ?? 0);
+    const remaining = Number(status?.remaining ?? 0);
     const limit = status
       ? Number(status.period_limit ?? 0)
       : budget
       ? Number(budget.limit ?? 0)
       : 0;
-    const progress = limit ? Math.min(100, (totalExpense / limit) * 100) : 0;
+    const progress = limit ? (totalExpense / limit) * 100 : 0;
+    const tone = status?.exceeded ? "over" : budgetTone(totalExpense, limit);
     const currentWeek =
       periodView === "weekly" && weekIndex !== null
         ? weekSegments[weekIndex]
         : null;
+
+    const stats = [
+      { label: "Limit", value: formatCurrency(limit), color: "text-ink" },
+      { label: "Spent", value: formatCurrency(totalExpense), color: "text-spend" },
+      { label: "Invested", value: formatCurrency(totalInvested), color: "text-invest" },
+      { label: "Saved", value: formatCurrency(totalSaved), color: "text-saved" },
+      {
+        label: "Remaining",
+        value: formatCurrency(remaining),
+        color: remaining < 0 ? "text-spend" : "text-ink",
+      },
+    ];
+
     return (
-      <div className="space-y-4">
-        <Card>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPeriodView("monthly")}
-                className={`rounded-full px-4 py-1 text-sm font-medium transition ${
-                  periodView === "monthly"
-                    ? "bg-slate-200 text-slate-900"
-                    : "bg-slate-800 text-slate-400 hover:bg-slate-900"
-                }`}
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-wrap items-center gap-3">
+          <Segmented
+            label="Budget period"
+            options={[
+              { value: "monthly", label: "Monthly" },
+              { value: "weekly", label: "Weekly" },
+            ]}
+            value={periodView}
+            onChange={setPeriodView}
+          />
+          {periodView === "weekly" && currentWeek && weekIndex !== null && (
+            <div className="flex items-center gap-1 rounded-xl border border-line bg-surface p-1">
+              <IconButton
+                label="Previous week"
+                onClick={() => setWeekIndex(Math.max(0, weekIndex - 1))}
+                disabled={weekIndex === 0}
               >
-                Monthly
-              </button>
-              <button
-                onClick={() => setPeriodView("weekly")}
-                className={`rounded-full px-4 py-1 text-sm font-medium transition ${
-                  periodView === "weekly"
-                    ? "bg-slate-200 text-slate-900"
-                    : "bg-slate-800 text-slate-400 hover:bg-slate-900"
-                }`}
-              >
-                Weekly
-              </button>
-            </div>
-            {periodView === "weekly" && currentWeek && weekIndex !== null && (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setWeekIndex(Math.max(0, weekIndex - 1))}
-                  disabled={weekIndex === 0}
-                  className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 transition hover:border-sky-500 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  ← Prev
-                </button>
-                <span className="text-xs text-slate-300">
-                  Week {weekIndex + 1} of {weekSegments.length} (
-                  {formatDate(currentWeek.start)} – {formatDate(currentWeek.end)})
+                <Icon name="chevronLeft" size={16} />
+              </IconButton>
+              <span className="min-w-[200px] text-center text-[13px] font-medium text-ink">
+                Week {weekIndex + 1} of {weekSegments.length} ·{" "}
+                <span className="font-normal text-muted">
+                  {formatDate(currentWeek.start)} – {formatDate(currentWeek.end)}
                 </span>
-                <button
-                  onClick={() =>
-                    setWeekIndex(
-                      Math.min(weekSegments.length - 1, weekIndex + 1)
-                    )
-                  }
-                  disabled={weekIndex === weekSegments.length - 1}
-                  className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 transition hover:border-sky-500 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Next →
-                </button>
+              </span>
+              <IconButton
+                label="Next week"
+                onClick={() =>
+                  setWeekIndex(
+                    Math.min(weekSegments.length - 1, weekIndex + 1)
+                  )
+                }
+                disabled={weekIndex === weekSegments.length - 1}
+              >
+                <Icon name="chevronRight" size={16} />
+              </IconButton>
+            </div>
+          )}
+        </div>
+
+        <Card className="flex flex-wrap items-center gap-8 sm:p-7">
+          <ProgressRing
+            value={progress}
+            tone={tone}
+            label={`${Math.round(progress)} percent of the budget used`}
+          />
+          <div className="grid min-w-[260px] flex-1 grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-5">
+            {stats.map((s) => (
+              <div key={s.label} className="flex flex-col gap-1">
+                <span className="text-xs text-muted">{s.label}</span>
+                <span className={clsx("text-xl font-semibold tracking-tight", s.color)}>
+                  {s.value}
+                </span>
               </div>
-            )}
+            ))}
+            <div className="col-span-full flex flex-col gap-2">
+              <ProgressBar value={progress} tone={tone} />
+              {status?.exceeded && (
+                <span className="text-xs text-spend">You've exceeded this budget for this period.</span>
+              )}
+            </div>
           </div>
         </Card>
-        <div className="grid gap-3 md:grid-cols-5">
-          <Card>
-            <p className="text-xs uppercase tracking-wide text-slate-400">
-              Limit
-            </p>
-            <p className="mt-2 text-2xl font-semibold text-slate-100">
-              {formatCurrency(limit)}
-            </p>
-          </Card>
-          <Card>
-            <p className="text-xs uppercase tracking-wide text-slate-400">
-              Spent
-            </p>
-            <p className="mt-2 text-2xl font-semibold text-rose-400">
-              {formatCurrency(totalExpense)}
-            </p>
-          </Card>
-          <Card>
-            <p className="text-xs uppercase tracking-wide text-slate-400">
-              Invested
-            </p>
-            <p className="mt-2 text-2xl font-semibold text-blue-400">
-              {formatCurrency(totalInvested)}
-            </p>
-          </Card>
-          <Card>
-            <p className="text-xs uppercase tracking-wide text-slate-400">
-              Saved
-            </p>
-            <p className="mt-2 text-2xl font-semibold text-amber-400">
-              {formatCurrency(totalSaved)}
-            </p>
-          </Card>
-          <Card>
-            <p className="text-xs uppercase tracking-wide text-slate-400">
-              Remaining
-            </p>
-            <p className="mt-2 text-2xl font-semibold text-emerald-400">
-              {formatCurrency(remaining)}
-            </p>
-          </Card>
-          <Card className="md:col-span-5">
-            <p className="text-xs text-slate-400 uppercase tracking-wide">
-              Progress
-            </p>
-            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-800">
-              <div
-                className="h-full rounded-full bg-sky-500"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          </Card>
-        </div>
 
         {/* Sub-tabs for Categories and Transactions */}
         <Card>
-          <div className="mb-4 flex flex-wrap gap-2">
-            <button
-              onClick={() => setNumericSubTab("categories")}
-              className={`rounded-full px-4 py-1 text-sm font-medium transition ${
-                numericSubTab === "categories"
-                  ? "bg-slate-200 text-slate-900"
-                  : "bg-slate-800 text-slate-400 hover:bg-slate-900"
-              }`}
-            >
-              Category Limits
-            </button>
-            <button
-              onClick={() => setNumericSubTab("transactions")}
-              className={`rounded-full px-4 py-1 text-sm font-medium transition ${
-                numericSubTab === "transactions"
-                  ? "bg-slate-200 text-slate-900"
-                  : "bg-slate-800 text-slate-400 hover:bg-slate-900"
-              }`}
-            >
-              Transactions
-            </button>
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+            <Tabs
+              label="Budget detail"
+              options={[
+                { value: "categories", label: "Category limits" },
+                { value: "transactions", label: "Transactions" },
+              ]}
+              value={numericSubTab}
+              onChange={setNumericSubTab}
+            />
+            {numericSubTab === "categories" ? (
+              <Button variant="secondary" size="sm" onClick={() => setShowCategoryForm(true)}>
+                <Icon name="plus" size={15} />
+                Add category
+              </Button>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as "date" | "amount" | "category")}
+                  className="field-sm"
+                  aria-label="Sort transactions"
+                >
+                  <option value="date">Sort by Date</option>
+                  <option value="amount">Sort by Amount</option>
+                  <option value="category">Sort by Category</option>
+                </select>
+                <IconButton
+                  label={sortOrder === "asc" ? "Ascending" : "Descending"}
+                  className="border border-line"
+                  onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
+                >
+                  <Icon name={sortOrder === "asc" ? "sortAsc" : "sortDesc"} size={16} />
+                </IconButton>
+                <Button variant="secondary" size="sm" onClick={() => setShowTransactionForm(true)}>
+                  <Icon name="plus" size={15} />
+                  Add transaction
+                </Button>
+              </div>
+            )}
           </div>
 
           {numericSubTab === "categories" ? (
-            <>
-              {/* Budget Categories */}
-              <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-100">
-                  Category Limits
-                </h3>
-                <Button
-                  variant="ghost"
-                  onClick={() => setShowCategoryForm(true)}
-                  className="text-xs"
-                >
-                  + Add Category
-                </Button>
-              </div>
-              {budgetCategories && budgetCategories.length > 0 ? (
-                <div className="space-y-3">
-                  {budgetCategories.map((bc) => {
-                    const categoryLimit = Number(bc.limit);
-                    const actualSpending = Number(bc.actual_spending);
-                    const categoryProgress = categoryLimit > 0 
-                      ? Math.min(100, (actualSpending / categoryLimit) * 100) 
-                      : 0;
-                    const exceeded = actualSpending > categoryLimit;
-                    
-                    return (
-                      <div
-                        key={bc.id}
+            budgetCategories && budgetCategories.length > 0 ? (
+              <div className="flex flex-col">
+                {budgetCategories.map((bc) => {
+                  const categoryLimit = Number(bc.limit);
+                  const actualSpending = Number(bc.actual_spending);
+                  const categoryProgress = categoryLimit > 0
+                    ? (actualSpending / categoryLimit) * 100
+                    : 0;
+                  const exceeded = actualSpending > categoryLimit;
+                  const catTone = budgetTone(actualSpending, categoryLimit);
+
+                  return (
+                    <div
+                      key={bc.id}
+                      className="group -mx-3 grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-2 rounded-xl px-3 py-3.5 transition hover:bg-canvas sm:grid-cols-[minmax(150px,1.4fr)_minmax(100px,2fr)_auto_auto]"
+                    >
+                      <button
+                        type="button"
                         onClick={() => setSelectedCategoryId(bc.id)}
-                        className="rounded-lg border border-slate-800 bg-slate-900/50 p-3 cursor-pointer transition hover:border-sky-500/50 hover:bg-slate-900/70"
+                        className="flex min-w-0 items-center gap-2.5 text-left"
+                        title="View transactions in this category"
                       >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-slate-100">
-                                {bc.category.name}
-                              </span>
-                              <span
-                                className={`rounded-full px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${
-                                  bc.category.type === "income"
-                                    ? "bg-green-500/20 text-green-400"
-                                    : bc.category.type === "investment"
-                                    ? "bg-blue-500/20 text-blue-400"
-                                    : "bg-red-500/20 text-red-400"
-                                }`}
-                              >
-                                {bc.category.type}
-                              </span>
-                            </div>
-                            <div className="mt-2 grid grid-cols-2 gap-4 text-xs">
-                              <div>
-                                <p className="text-slate-400">Limit</p>
-                                <p className="mt-1 font-semibold text-slate-200">
-                                  {formatCurrency(categoryLimit)}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-slate-400">Spent</p>
-                                <p
-                                  className={`mt-1 font-semibold ${
-                                    exceeded ? "text-rose-400" : "text-slate-200"
-                                  }`}
-                                >
-                                  {formatCurrency(actualSpending)}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
-                              <div
-                                className={`h-full rounded-full ${
-                                  exceeded ? "bg-rose-500" : "bg-emerald-500"
-                                }`}
-                                style={{ width: `${categoryProgress}%` }}
-                              />
-                            </div>
-                            {exceeded && (
-                              <p className="mt-1 text-xs text-rose-400">
-                                Over budget by {formatCurrency(actualSpending - categoryLimit)}
-                              </p>
-                            )}
-                          </div>
-                          <div className="ml-2 flex gap-2">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setEditingCategoryId(bc.id);
-                              }}
-                              className="text-xs text-sky-400 hover:text-sky-300"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (
-                                  window.confirm(
-                                    `Remove "${bc.category.name}" from this budget?`
-                                  )
-                                ) {
-                                  deleteCategoryMutation.mutate(bc.id);
-                                }
-                              }}
-                              className="text-xs text-rose-400 hover:text-rose-300"
-                              disabled={deleteCategoryMutation.isPending}
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        </div>
+                        <span
+                          className="h-2.5 w-2.5 shrink-0 rounded-[3px]"
+                          style={{ backgroundColor: categoryColor(bc.category) }}
+                        />
+                        <span className="truncate text-sm font-medium text-ink group-hover:text-accent">
+                          {bc.category.name}
+                        </span>
+                        <span className="hidden xl:inline-flex">
+                          <TypeBadge type={bc.category.type} />
+                        </span>
+                      </button>
+                      <div className="col-span-2 row-start-2 sm:col-span-1 sm:row-start-auto">
+                        <ProgressBar value={categoryProgress} tone={catTone} />
                       </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-sm text-slate-400">
-                  No categories added yet. Click "+ Add Category" to get started.
-                </p>
-              )}
-            </>
-          ) : (
-            <>
-              {/* Budget Transactions */}
-              <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-100">
-                  Transactions
-                </h3>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    onClick={() => setShowTransactionForm(true)}
-                    className="text-xs"
-                  >
-                    + Add Transaction
-                  </Button>
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as "date" | "amount" | "category")}
-                    className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 focus:border-sky-500 focus:outline-none"
-                  >
-                    <option value="date">Sort by Date</option>
-                    <option value="amount">Sort by Amount</option>
-                    <option value="category">Sort by Category</option>
-                  </select>
-                  <button
-                    onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
-                    className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 hover:border-sky-500 transition"
-                    title={sortOrder === "asc" ? "Ascending" : "Descending"}
-                  >
-                    {sortOrder === "asc" ? "↑" : "↓"}
-                  </button>
-                </div>
+                      <div className="row-start-1 flex flex-col items-end text-[13px] sm:row-start-auto">
+                        <span className="font-semibold text-ink">
+                          {formatCurrency(actualSpending)}{" "}
+                          <span className="font-normal text-muted">/ {formatCurrency(categoryLimit)}</span>
+                        </span>
+                        <span className={clsx("text-xs", TONE_TEXT[catTone])}>
+                          {exceeded
+                            ? `Over budget by ${formatCurrency(actualSpending - categoryLimit)}`
+                            : `${formatCurrency(categoryLimit - actualSpending)} left`}
+                        </span>
+                      </div>
+                      <div className="col-start-2 row-start-3 flex justify-end gap-0.5 sm:col-start-auto sm:row-start-auto">
+                        <IconButton
+                          label={`Edit ${bc.category.name} limit`}
+                          onClick={() => setEditingCategoryId(bc.id)}
+                        >
+                          <Icon name="edit" size={16} />
+                        </IconButton>
+                        <IconButton
+                          label={`Remove ${bc.category.name}`}
+                          className="hover:bg-spend-soft hover:text-spend"
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `Remove "${bc.category.name}" from this budget?`
+                              )
+                            ) {
+                              deleteCategoryMutation.mutate(bc.id);
+                            }
+                          }}
+                          disabled={deleteCategoryMutation.isPending}
+                        >
+                          <Icon name="trash" size={16} />
+                        </IconButton>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              {transactionsLoading ? (
-                <div className="py-8 text-center text-sm text-slate-400">
-                  Loading transactions...
+            ) : (
+              <p className="py-8 text-center text-sm text-muted">
+                No categories added yet. Click "Add category" to get started.
+              </p>
+            )
+          ) : transactionsLoading ? (
+            <div className="py-8 text-center text-sm text-muted">
+              Loading transactions...
+            </div>
+          ) : sortedTransactions.length > 0 ? (
+            <div className="flex flex-col">
+              {sortedTransactions.map((tx) => (
+                <div
+                  key={tx.id}
+                  className="flex items-center gap-3 border-b border-line-soft py-3 last:border-0"
+                >
+                  <CategoryAvatar
+                    size="sm"
+                    name={tx.description || tx.category?.name}
+                    color={categoryColor(tx.category ?? null, tx.id)}
+                  />
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-sm font-medium text-ink">
+                      {tx.description || "—"}
+                    </span>
+                    <span className="text-xs text-muted">
+                      {tx.category?.name || "Uncategorized"} ·{" "}
+                      {formatDate(tx.date)}
+                    </span>
+                  </span>
+                  <span className="hidden sm:inline-flex">
+                    <TypeBadge type={tx.type} />
+                  </span>
+                  <span
+                    className={clsx(
+                      "min-w-[88px] text-right text-sm font-semibold",
+                      tx.type === "expense" ? "text-ink" : TYPE_META[tx.type].text
+                    )}
+                  >
+                    {formatSignedMoney(tx.amount, tx.type)}
+                  </span>
                 </div>
-              ) : budgetTransactions && budgetTransactions.items.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-slate-800">
-                        <th className="py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">
-                          Date
-                        </th>
-                        <th className="py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">
-                          Description
-                        </th>
-                        <th className="py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">
-                          Category
-                        </th>
-                        <th className="py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-400">
-                          Amount
-                        </th>
-                        <th className="py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">
-                          Type
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[...(budgetTransactions.items || [])]
-                        .sort((a, b) => {
-                          let comparison = 0;
-                          if (sortBy === "date") {
-                            comparison = new Date(a.date).getTime() - new Date(b.date).getTime();
-                          } else if (sortBy === "amount") {
-                            comparison = Number(a.amount) - Number(b.amount);
-                          } else if (sortBy === "category") {
-                            const aCategory = a.category?.name || "Uncategorized";
-                            const bCategory = b.category?.name || "Uncategorized";
-                            comparison = aCategory.localeCompare(bCategory);
-                          }
-                          return sortOrder === "asc" ? comparison : -comparison;
-                        })
-                        .map((tx) => (
-                          <tr
-                            key={tx.id}
-                            className="border-b border-slate-900/60 last:border-0"
-                          >
-                            <td className="py-2 text-xs text-slate-300">
-                              {new Date(tx.date).toLocaleDateString()}
-                            </td>
-                            <td className="py-2 text-xs text-slate-300">
-                              {tx.description || "—"}
-                            </td>
-                            <td className="py-2 text-xs text-slate-300">
-                              {tx.category?.name || (
-                                <span className="text-slate-500">Uncategorized</span>
-                              )}
-                            </td>
-                            <td className="py-2 text-right text-xs font-semibold">
-                              <span
-                                className={
-                                  tx.type === "income"
-                                    ? "text-emerald-400"
-                                    : tx.type === "investment"
-                                    ? "text-blue-400"
-                                    : "text-rose-400"
-                                }
-                              >
-                                {tx.type === "income" ? "+" : "-"}
-                                {formatCurrency(tx.amount)}
-                              </span>
-                            </td>
-                            <td className="py-2">
-                              <span
-                                className={`rounded-full px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${
-                                  tx.type === "income"
-                                    ? "bg-green-500/20 text-green-400"
-                                    : tx.type === "investment"
-                                    ? "bg-blue-500/20 text-blue-400"
-                                    : "bg-red-500/20 text-red-400"
-                                }`}
-                              >
-                                {tx.type}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="py-8 text-center text-sm text-slate-400">
-                  No transactions found for this budget.
-                </p>
-              )}
-            </>
+              ))}
+            </div>
+          ) : (
+            <p className="py-8 text-center text-sm text-muted">
+              No transactions found for this budget.
+            </p>
           )}
         </Card>
       </div>
     );
-  }, [budget, status, budgetCategories, deleteCategoryMutation, budgetTransactions, sortBy, sortOrder, transactionsLoading, numericSubTab, periodView, weekIndex, weekSegments]);
+  };
 
   const graphsContent = (
     <Card>
-      <p className="text-sm text-slate-100">
-        {budget ? budget.name : "Budget"} timeline
-      </p>
-      <div className="mt-4 space-y-2 text-xs text-slate-300">
+      <CardHeader title={`${budget ? budget.name : "Budget"} timeline`} />
+      <div className="space-y-3 text-[13px] text-muted">
         <div className="flex items-center gap-3">
-          <div className="h-2 w-1/2 rounded-full bg-emerald-500/60" />
+          <div className="h-2 w-1/2 rounded-full bg-saved/60" />
           <span>Projected spending curve</span>
         </div>
         <div className="flex items-center gap-3">
-          <div className="h-2 w-1/3 rounded-full bg-rose-500/60" />
+          <div className="h-2 w-1/3 rounded-full bg-spend/60" />
           <span>Actual spend line</span>
         </div>
         <div className="flex items-center gap-3">
-          <div className="h-2 w-1/4 rounded-full bg-blue-500/60" />
+          <div className="h-2 w-1/4 rounded-full bg-invest/60" />
           <span>Investment savings</span>
         </div>
       </div>
@@ -1031,7 +896,7 @@ export const BudgetDetailPage: React.FC = () => {
         name: bc.category.name,
         value: Number(bc.actual_spending),
         limit: Number(bc.limit),
-        percentage: status?.total_expense 
+        percentage: status?.total_expense
           ? ((Number(bc.actual_spending) / Number(status.total_expense)) * 100).toFixed(1)
           : "0",
       })) || [];
@@ -1059,33 +924,33 @@ export const BudgetDetailPage: React.FC = () => {
 
     // Color palette for the pie chart
     const COLORS = [
-      "#ef4444", // red-500
-      "#f97316", // orange-500
-      "#eab308", // yellow-500
-      "#22c55e", // emerald-500
-      "#06b6d4", // cyan-500
-      "#3b82f6", // blue-500
-      "#8b5cf6", // violet-500
-      "#ec4899", // pink-500
-      "#f43f5e", // rose-500
-      "#14b8a6", // teal-500
+      "#3451D1",
+      "#0E7A6B",
+      "#C2410C",
+      "#6741D9",
+      "#B45309",
+      "#A21CAF",
+      "#0369A1",
+      "#15803D",
+      "#BE123C",
+      "#475467",
     ];
 
     const CustomTooltip = ({ active, payload }: any) => {
       if (active && payload && payload.length) {
         const data = payload[0];
         return (
-          <div className="rounded-lg border border-slate-700 bg-slate-900 p-3 shadow-lg">
-            <p className="text-sm font-semibold text-slate-100">{data.name}</p>
-            <p className="text-xs text-slate-300 mt-1">
+          <div className="rounded-xl border border-line bg-surface p-3 shadow-lift">
+            <p className="text-sm font-semibold text-ink">{data.name}</p>
+            <p className="mt-1 text-xs text-ink-2">
               Spent: {formatCurrency(data.value)}
             </p>
             {data.payload.limit > 0 && (
-              <p className="text-xs text-slate-300">
+              <p className="text-xs text-ink-2">
                 Limit: {formatCurrency(data.payload.limit)}
               </p>
             )}
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="mt-1 text-xs text-muted">
               {data.payload.percentage}% of total
             </p>
           </div>
@@ -1096,21 +961,21 @@ export const BudgetDetailPage: React.FC = () => {
 
 
     return (
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-5 md:grid-cols-2">
         <Card>
-          <p className="mb-4 text-xs uppercase tracking-wide text-slate-400">
-            Expense breakdown by category
-          </p>
+          <CardHeader title="Expense breakdown by category" />
           {chartData.length > 0 ? (
-            <div className="h-64 w-full">
+            <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={chartData}
                     cx="50%"
                     cy="50%"
-                    outerRadius={80}
-                    fill="#8884d8"
+                    innerRadius={52}
+                    outerRadius={86}
+                    paddingAngle={2}
+                    stroke="none"
                     dataKey="value"
                   >
                     {chartData.map((entry, index) => (
@@ -1124,7 +989,7 @@ export const BudgetDetailPage: React.FC = () => {
                   <Legend
                     wrapperStyle={{ fontSize: "12px" }}
                     formatter={(value, entry: any) => (
-                      <span className="text-slate-300">
+                      <span className="text-ink-2">
                         {value}: {formatCurrency(entry.payload.value)}
                       </span>
                     )}
@@ -1134,23 +999,21 @@ export const BudgetDetailPage: React.FC = () => {
             </div>
           ) : (
             <div className="flex h-64 items-center justify-center">
-              <p className="text-sm text-slate-400">
+              <p className="text-center text-sm text-muted">
                 No spending data available yet. Add categories and transactions to see the breakdown.
               </p>
             </div>
           )}
         </Card>
         <Card>
-          <p className="mb-4 text-xs uppercase tracking-wide text-slate-400">
-            Category Spending vs Limits
-          </p>
+          <CardHeader title="Category spending vs limits" />
           {budgetCategories && budgetCategories.length > 0 ? (
             <div className="h-80 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart
                   data={budgetCategories.map((bc) => ({
-                    name: bc.category.name.length > 15 
-                      ? bc.category.name.substring(0, 15) + "..." 
+                    name: bc.category.name.length > 15
+                      ? bc.category.name.substring(0, 15) + "..."
                       : bc.category.name,
                     limit: Number(bc.limit),
                     spent: Number(bc.actual_spending),
@@ -1158,52 +1021,58 @@ export const BudgetDetailPage: React.FC = () => {
                   }))}
                   margin={{ top: 5, right: 20, left: 0, bottom: 60 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                  <XAxis 
-                    dataKey="name" 
-                    tick={{ fill: "#94a3b8", fontSize: 11 }}
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E4E7EC" vertical={false} />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fill: "#5B6474", fontSize: 11 }}
                     angle={-45}
                     textAnchor="end"
                     height={80}
+                    axisLine={{ stroke: "#E4E7EC" }}
+                    tickLine={false}
                   />
-                  <YAxis 
-                    tick={{ fill: "#94a3b8", fontSize: 11 }}
+                  <YAxis
+                    tick={{ fill: "#5B6474", fontSize: 11 }}
                     tickFormatter={(value) => `$${value.toFixed(0)}`}
+                    axisLine={false}
+                    tickLine={false}
                   />
                   <Tooltip
+                    cursor={{ fill: "#F5F6F8" }}
                     contentStyle={{
-                      backgroundColor: "#1e293b",
-                      border: "1px solid #475569",
-                      borderRadius: "8px",
+                      backgroundColor: "#FFFFFF",
+                      border: "1px solid #E4E7EC",
+                      borderRadius: "12px",
+                      boxShadow: "0 8px 24px rgba(16,24,40,0.08)",
                     }}
-                    formatter={(value: number, name: string, props: any) => [
+                    formatter={(value: number, name: string) => [
                       formatCurrency(value),
                       name === "limit" ? "Limit" : "Spent",
                     ]}
-                    labelFormatter={(label, payload) => 
+                    labelFormatter={(label, payload) =>
                       payload && payload[0] ? payload[0].payload.fullName : label
                     }
                   />
                   {/* Background bar for limit (shaded, rendered first so it's behind) */}
                   <Bar
                     dataKey="limit"
-                    fill="#3b82f6"
-                    opacity={0.25}
-                    radius={[4, 4, 0, 0]}
+                    fill="#3451D1"
+                    opacity={0.18}
+                    radius={[6, 6, 0, 0]}
                     isAnimationActive={false}
                   />
                   {/* Foreground bar for spent (brighter, rendered second so it overlays on top) */}
                   <Bar
                     dataKey="spent"
-                    fill="#60a5fa"
-                    radius={[4, 4, 0, 0]}
+                    fill="#3451D1"
+                    radius={[6, 6, 0, 0]}
                   />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
           ) : (
             <div className="flex h-64 items-center justify-center">
-              <p className="text-sm text-slate-400">
+              <p className="text-center text-sm text-muted">
                 No categories added yet. Add categories to see spending vs limits.
               </p>
             </div>
@@ -1216,7 +1085,7 @@ export const BudgetDetailPage: React.FC = () => {
   if (Number.isNaN(budgetId)) {
     return (
       <Card>
-        <p className="text-sm text-rose-400">
+        <p className="text-sm text-spend">
           Invalid budget selected.
         </p>
       </Card>
@@ -1224,36 +1093,43 @@ export const BudgetDetailPage: React.FC = () => {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-100">
-            {budget ? budget.name : "Budget details"}
-          </h2>
-          {budget && (
-            <p className="mt-1 text-sm text-slate-400">
-              {formatDate(budget.start_date)} - {formatDate(budget.end_date)}
-            </p>
-          )}
-        </div>
-        <div className="flex gap-2">
-          <Button onClick={() => setShowCategoryForm(true)}>
-            + Add Category
-          </Button>
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex flex-col gap-3">
           <Button
-            variant="ghost"
-            onClick={() => setShowEditBudgetForm(true)}
-          >
-            Edit Budget
-          </Button>
-          <Button
-            variant="ghost"
+            variant="secondary"
+            size="sm"
+            className="self-start"
             onClick={() => navigate("/budgets")}
           >
+            <Icon name="chevronLeft" size={16} />
             Back to budgets
           </Button>
+          <div>
+            <h2 className="text-xl font-semibold tracking-tight text-ink">
+              {budget ? budget.name : "Budget details"}
+            </h2>
+            {budget && (
+              <p className="mt-0.5 text-sm text-muted">
+                {formatDate(budget.start_date)} – {formatDate(budget.end_date)}
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => setShowCategoryForm(true)}>
+            <Icon name="plus" size={16} />
+            Add category
+          </Button>
           <Button
-            variant="ghost"
+            variant="secondary"
+            onClick={() => setShowEditBudgetForm(true)}
+          >
+            <Icon name="edit" size={16} />
+            Edit budget
+          </Button>
+          <Button
+            variant="danger"
             onClick={() => {
               if (
                 window.confirm(
@@ -1263,40 +1139,32 @@ export const BudgetDetailPage: React.FC = () => {
                 deleteBudgetMutation.mutate(budgetId);
               }
             }}
-            className="text-rose-400 hover:text-rose-300"
             disabled={deleteBudgetMutation.isPending}
           >
-            {deleteBudgetMutation.isPending ? "Deleting..." : "Delete Budget"}
+            <Icon name="trash" size={16} />
+            {deleteBudgetMutation.isPending ? "Deleting..." : "Delete"}
           </Button>
         </div>
       </div>
 
-      <Card>
-        <div className="flex flex-wrap gap-2">
-          {(Object.keys(tabLabels) as TabKey[]).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`rounded-full px-4 py-1 text-sm font-medium transition ${
-                tab === activeTab
-                  ? "bg-slate-200 text-slate-900"
-                  : "bg-slate-800 text-slate-400 hover:bg-slate-900"
-              }`}
-            >
-              {tabLabels[tab]}
-            </button>
-          ))}
-        </div>
-      </Card>
+      <Tabs
+        label="Budget views"
+        options={(Object.keys(tabLabels) as TabKey[]).map((tab) => ({
+          value: tab,
+          label: tabLabels[tab],
+        }))}
+        value={activeTab}
+        onChange={setActiveTab}
+      />
 
       {loading || !budget ? (
-        <Card className="h-32 animate-pulse bg-slate-900/80" />
+        <Skeleton className="h-64" />
       ) : (
-        <>
-          {activeTab === "numeric" && numericContent}
+        <div key={activeTab} className="animate-rise">
+          {activeTab === "numeric" && renderNumeric()}
           {activeTab === "graphs" && graphsContent}
           {activeTab === "charts" && chartsContent}
-        </>
+        </div>
       )}
 
       {showCategoryForm && (
@@ -1413,80 +1281,65 @@ const EditBudgetForm = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <Card className="w-full max-w-md">
-        <h2 className="mb-4 text-lg font-semibold">Edit Budget</h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">Name</label>
+    <Modal title="Edit budget" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <Field label="Name">
+          <input
+            type="text"
+            value={formData.name}
+            onChange={(e) =>
+              setFormData({ ...formData, name: e.target.value })
+            }
+            className="field"
+            placeholder="Budget name"
+            maxLength={100}
+          />
+        </Field>
+        <Field label="Limit">
+          <input
+            type="number"
+            step="0.01"
+            value={formData.limit}
+            onChange={(e) =>
+              setFormData({ ...formData, limit: e.target.value })
+            }
+            className="field"
+            min="0"
+          />
+        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Start date">
             <input
-              type="text"
-              value={formData.name}
+              type="date"
+              value={formData.startDate}
               onChange={(e) =>
-                setFormData({ ...formData, name: e.target.value })
+                setFormData({ ...formData, startDate: e.target.value })
               }
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-              placeholder="Budget name"
-              maxLength={100}
+              className="field"
             />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">Limit</label>
+          </Field>
+          <Field label="End date">
             <input
-              type="number"
-              step="0.01"
-              value={formData.limit}
+              type="date"
+              value={formData.endDate}
               onChange={(e) =>
-                setFormData({ ...formData, limit: e.target.value })
+                setFormData({ ...formData, endDate: e.target.value })
               }
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-              min="0"
+              className="field"
             />
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-xs text-slate-400">
-                Start date
-              </label>
-              <input
-                type="date"
-                value={formData.startDate}
-                onChange={(e) =>
-                  setFormData({ ...formData, startDate: e.target.value })
-                }
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-slate-400">
-                End date
-              </label>
-              <input
-                type="date"
-                value={formData.endDate}
-                onChange={(e) =>
-                  setFormData({ ...formData, endDate: e.target.value })
-                }
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-              />
-            </div>
-          </div>
-          {error && (
-            <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-400">
-              {error}
-            </div>
-          )}
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? "Saving..." : "Save Changes"}
-            </Button>
-          </div>
-        </form>
-      </Card>
-    </div>
+          </Field>
+        </div>
+        {error && <FormError>{error}</FormError>}
+        <FormActions>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={mutation.isPending}>
+            {mutation.isPending ? "Saving..." : "Save changes"}
+          </Button>
+        </FormActions>
+      </form>
+    </Modal>
   );
 };
 
@@ -1518,46 +1371,34 @@ const EditCategoryLimitForm = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <Card className="w-full max-w-md">
-        <h2 className="mb-4 text-lg font-semibold">
-          Edit Limit - {budgetCategory.category.name}
-        </h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">
-              Category Limit
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              value={limit}
-              onChange={(e) => setLimit(e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-              placeholder="0.00"
-              min="0"
-              autoFocus
-            />
-            <p className="mt-1 text-xs text-slate-500">
-              Current spending: {formatCurrency(budgetCategory.actual_spending)}
-            </p>
-          </div>
-          {error && (
-            <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-400">
-              {error}
-            </div>
-          )}
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isLoading}>
-              {isLoading ? "Saving..." : "Save"}
-            </Button>
-          </div>
-        </form>
-      </Card>
-    </div>
+    <Modal title={`Edit limit · ${budgetCategory.category.name}`} size="sm" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <Field
+          label="Category limit"
+          hint={`Current spending: ${formatCurrency(budgetCategory.actual_spending)}`}
+        >
+          <input
+            type="number"
+            step="0.01"
+            value={limit}
+            onChange={(e) => setLimit(e.target.value)}
+            className="field"
+            placeholder="0.00"
+            min="0"
+            autoFocus
+          />
+        </Field>
+        {error && <FormError>{error}</FormError>}
+        <FormActions>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={isLoading}>
+            {isLoading ? "Saving..." : "Save"}
+          </Button>
+        </FormActions>
+      </form>
+    </Modal>
   );
 };
 
@@ -1593,90 +1434,55 @@ const CategoryTransactionsModal = ({
   });
 
   return (
-    <div 
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          onClose();
-        }
-      }}
+    <Modal
+      size="lg"
+      title={`Transactions · ${selectedCategory.data?.category.name || "Category"}`}
+      subtitle={
+        selectedCategory.data && (
+          <>
+            Limit: {formatCurrency(selectedCategory.data.limit)} · Spent:{" "}
+            {formatCurrency(selectedCategory.data.actual_spending)}
+          </>
+        )
+      }
+      onClose={onClose}
     >
-      <Card className="w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-100">
-              Transactions - {selectedCategory.data?.category.name || "Category"}
-            </h2>
-            <p className="text-xs text-slate-400 mt-1">
-              {selectedCategory.data && (
-                <>
-                  Limit: {formatCurrency(selectedCategory.data.limit)} | 
-                  Spent: {formatCurrency(selectedCategory.data.actual_spending)}
-                </>
-              )}
-            </p>
-          </div>
-          <Button variant="ghost" onClick={onClose}>
-            Close
-          </Button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto">
-          {isLoading ? (
-            <div className="text-center py-8 text-slate-400">Loading transactions...</div>
-          ) : transactions && transactions.items.length > 0 ? (
-            <div className="space-y-2">
-              {transactions.items.map((tx) => (
-                <div
-                  key={tx.id}
-                  className="rounded-lg border border-slate-800 bg-slate-900/50 p-3"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium text-slate-100">
-                          {tx.description || "No description"}
-                        </p>
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${
-                            tx.type === "income"
-                              ? "bg-green-500/20 text-green-400"
-                              : tx.type === "investment"
-                              ? "bg-blue-500/20 text-blue-400"
-                              : "bg-red-500/20 text-red-400"
-                          }`}
-                        >
-                          {tx.type}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-400 mt-1">
-                        {new Date(tx.date).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <p
-                      className={`text-sm font-semibold ${
-                        tx.type === "income"
-                          ? "text-emerald-400"
-                          : tx.type === "investment"
-                          ? "text-blue-400"
-                          : "text-rose-400"
-                      }`}
-                    >
-                      {tx.type === "income" ? "+" : "-"}
-                      {formatCurrency(tx.amount)}
-                    </p>
-                  </div>
+      {isLoading ? (
+        <div className="py-8 text-center text-sm text-muted">Loading transactions...</div>
+      ) : transactions && transactions.items.length > 0 ? (
+        <div className="flex flex-col">
+          {transactions.items.map((tx) => (
+            <div
+              key={tx.id}
+              className="flex items-center gap-3 border-b border-line-soft py-3 last:border-0"
+            >
+              <div className="flex min-w-0 flex-1 flex-col">
+                <div className="flex items-center gap-2">
+                  <p className="truncate text-sm font-medium text-ink">
+                    {tx.description || "No description"}
+                  </p>
+                  <TypeBadge type={tx.type} />
                 </div>
-              ))}
+                <p className="mt-0.5 text-xs text-muted">
+                  {formatDate(tx.date)}
+                </p>
+              </div>
+              <p
+                className={clsx(
+                  "text-sm font-semibold",
+                  tx.type === "expense" ? "text-ink" : TYPE_META[tx.type].text
+                )}
+              >
+                {formatSignedMoney(tx.amount, tx.type)}
+              </p>
             </div>
-          ) : (
-            <div className="text-center py-8 text-slate-400">
-              No transactions found for this category in this budget.
-            </div>
-          )}
+          ))}
         </div>
-      </Card>
-    </div>
+      ) : (
+        <div className="py-8 text-center text-sm text-muted">
+          No transactions found for this category in this budget.
+        </div>
+      )}
+    </Modal>
   );
 };
-

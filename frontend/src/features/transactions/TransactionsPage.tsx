@@ -1,10 +1,15 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import clsx from "clsx";
 import type { Transaction } from "../../lib/types";
 import { api } from "../../lib/api";
-import { Card } from "../../components/ui/Card";
-import { Button } from "../../components/ui/Button";
-import { TransactionForm } from "./TransactionForm";
+import { Card, Skeleton } from "../../components/ui/Card";
+import { Button, IconButton } from "../../components/ui/Button";
+import { ChipGroup } from "../../components/ui/Segmented";
+import { Icon } from "../../components/ui/Icon";
+import { CategoryAvatar, TypeBadge } from "../../components/ui/Progress";
+import { useQuickAdd } from "../../components/layout/QuickAdd";
+import { categoryColor, dayLabel, formatMoney, formatSignedMoney, TYPE_META } from "../../lib/format";
 import React from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -16,14 +21,14 @@ type Filters = {
     min_amount?: string;
     max_amount?: string;
   };
-  
+
   type TransactionListResponse = {
     items: Transaction[];
     total: number;
     limit: number;
     offset: number;
   };
-  
+
 const fetchTransactions = async (
   filters: Filters
 ): Promise<TransactionListResponse> => {
@@ -33,32 +38,29 @@ const fetchTransactions = async (
     if (!value) return;
     params[key] = value;
   });
-  
+
   const { data } = await api.get<TransactionListResponse>(
     "/transactions",
     { params }
   );
   return data;
 };
-  
-  const formatCurrency = (amount: number) =>
-    `$${Number(amount ?? 0).toFixed(2)}`;
-  
-const formatDate = (iso: string) => {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, { timeZone: "UTC" });
-};
-  
+
+const TYPE_FILTERS: { value: "" | "income" | "expense" | "investment"; label: string }[] = [
+  { value: "", label: "All" },
+  { value: "expense", label: "Expenses" },
+  { value: "income", label: "Income" },
+  { value: "investment", label: "Investments" },
+];
+
   export const TransactionsPage: React.FC = () => {
     const [filters, setFilters] = useState<Filters>({});
-    const [showForm, setShowForm] = useState(false);
-    const [editing, setEditing] = useState<Transaction | null>(null);
+    const [showMoreFilters, setShowMoreFilters] = useState(false);
     const navigate = useNavigate();
-  
+    const { openTransaction } = useQuickAdd();
+
     const queryClient = useQueryClient();
-  
+
     const {
       data,
       isLoading,
@@ -68,13 +70,13 @@ const formatDate = (iso: string) => {
       queryKey: ["transactions", filters],
       queryFn: () => fetchTransactions(filters),
     });
-  
+
     const deleteMutation = useMutation({
       mutationFn: async (tx: Transaction) => {
         await api.delete(`/transactions/${tx.id}`);
         return tx; // Return the transaction so we can use its budget_id
       },
-      onSuccess: (deletedTransaction) => {
+      onSuccess: () => {
         queryClient.invalidateQueries({
           queryKey: ["transactions"],
         });
@@ -85,13 +87,18 @@ const formatDate = (iso: string) => {
         queryClient.invalidateQueries({
           queryKey: ["budget-categories"],
         });
+        queryClient.invalidateQueries({
+          queryKey: ["budget-transactions"],
+        });
         // Also invalidate the budgets list to refresh the cards
         queryClient.invalidateQueries({
           queryKey: ["budgets"],
         });
+        queryClient.invalidateQueries({ queryKey: ["summary"] });
+        queryClient.invalidateQueries({ queryKey: ["summary-month"] });
       },
     });
-  
+
     const handleFilterChange =
       (field: keyof Filters) =>
       (
@@ -105,205 +112,189 @@ const formatDate = (iso: string) => {
           [field]: value || undefined,
         }));
       };
-  
+
     const handleClearFilters = () => {
       setFilters({});
     };
-  
+
     const handleAddClick = () => {
-      setEditing(null);
-      setShowForm(true);
+      openTransaction(null);
     };
-  
+
     const handleEditClick = (tx: Transaction) => {
-      setEditing(tx);
-      setShowForm(true);
+      openTransaction(tx);
     };
-  
-    const handleCloseForm = () => {
-      setShowForm(false);
-      setEditing(null);
-    };
-  
+
     const items = data?.items ?? [];
-    const isDeleting = deleteMutation.isPending;
-  
+    const deletingId = deleteMutation.isPending ? deleteMutation.variables?.id : null;
+    const activeExtraFilters = [
+      filters.start_date,
+      filters.end_date,
+      filters.min_amount,
+      filters.max_amount,
+    ].filter(Boolean).length;
+    const hasAnyFilter = activeExtraFilters > 0 || !!filters.type;
+
+    // Group by calendar day (list is already newest first).
+    const groups: { key: string; label: string; net: number; items: Transaction[] }[] = [];
+    items.forEach((tx) => {
+      const key = tx.date.slice(0, 10);
+      let group = groups.find((g) => g.key === key);
+      if (!group) {
+        group = { key, label: dayLabel(tx.date), net: 0, items: [] };
+        groups.push(group);
+      }
+      group.items.push(tx);
+      const amt = Number(tx.amount);
+      group.net += tx.type === "income" ? amt : -amt;
+    });
+
     return (
-      <div className="space-y-4">
+      <div className="flex flex-col gap-4">
         {/* Filters */}
-        <Card>
-          <div className="mb-4">
-            <h2 className="text-sm font-semibold text-slate-100">
-              Filters
-            </h2>
-            <p className="text-xs text-slate-500">
-              Refine the list by date range, type, or amount.
-            </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <ChipGroup
+            label="Type"
+            options={TYPE_FILTERS}
+            value={filters.type ?? ""}
+            onChange={(value) =>
+              setFilters((prev) => ({ ...prev, type: value || undefined }))
+            }
+          />
+          <Button
+            variant="secondary"
+            size="sm"
+            className="min-h-[38px] rounded-full"
+            aria-expanded={showMoreFilters}
+            onClick={() => setShowMoreFilters((v) => !v)}
+          >
+            <Icon name="filter" size={15} />
+            More filters
+            {activeExtraFilters > 0 && (
+              <span className="rounded-full bg-accent px-1.5 text-[11px] text-white">
+                {activeExtraFilters}
+              </span>
+            )}
+          </Button>
+          {hasAnyFilter && (
+            <Button variant="ghost" size="sm" onClick={handleClearFilters}>
+              Clear
+            </Button>
+          )}
+          <div className="ml-auto flex items-center gap-3">
+            {!isLoading && (
+              <span className="text-[13px] text-muted">
+                Showing {items.length} {items.length === 1 ? "transaction" : "transactions"}
+                {typeof data?.total === "number" && ` · ${data.total} total`}
+              </span>
+            )}
+            <Button variant="dark" onClick={handleAddClick} className="hidden sm:inline-flex">
+              <Icon name="plus" size={16} strokeWidth={2.2} />
+              Add
+            </Button>
           </div>
-          <div className="flex flex-wrap items-end gap-3">
-            <div>
-              <label className="mb-1 block text-xs text-slate-400">
+        </div>
+
+        {showMoreFilters && (
+          <Card className="animate-rise p-4 sm:p-5">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="flex flex-col gap-1.5 text-[13px] font-medium text-muted">
                 Start date
+                <input
+                  type="date"
+                  className="field"
+                  value={filters.start_date ?? ""}
+                  onChange={handleFilterChange("start_date")}
+                />
               </label>
-              <input
-                type="date"
-                className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-                value={filters.start_date ?? ""}
-                onChange={handleFilterChange("start_date")}
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-slate-400">
+              <label className="flex flex-col gap-1.5 text-[13px] font-medium text-muted">
                 End date
+                <input
+                  type="date"
+                  className="field"
+                  value={filters.end_date ?? ""}
+                  onChange={handleFilterChange("end_date")}
+                />
               </label>
-              <input
-                type="date"
-                className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-                value={filters.end_date ?? ""}
-                onChange={handleFilterChange("end_date")}
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-slate-400">
-                Type
-              </label>
-              <select
-                className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-                value={filters.type ?? ""}
-                onChange={handleFilterChange("type")}
-              >
-                <option value="">All</option>
-                <option value="income">Income</option>
-                <option value="expense">Expense</option>
-                <option value="investment">Investment</option>
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-slate-400">
+              <label className="flex flex-col gap-1.5 text-[13px] font-medium text-muted">
                 Min amount
+                <input
+                  type="number"
+                  className="field"
+                  placeholder="0.00"
+                  value={filters.min_amount ?? ""}
+                  onChange={handleFilterChange("min_amount")}
+                />
               </label>
-              <input
-                type="number"
-                className="w-24 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-                value={filters.min_amount ?? ""}
-                onChange={handleFilterChange("min_amount")}
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-slate-400">
+              <label className="flex flex-col gap-1.5 text-[13px] font-medium text-muted">
                 Max amount
+                <input
+                  type="number"
+                  className="field"
+                  placeholder="Any"
+                  value={filters.max_amount ?? ""}
+                  onChange={handleFilterChange("max_amount")}
+                />
               </label>
-              <input
-                type="number"
-                className="w-24 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-                value={filters.max_amount ?? ""}
-                onChange={handleFilterChange("max_amount")}
-              />
             </div>
-            <div className="ml-auto">
-              <Button
-                variant="ghost"
-                onClick={handleClearFilters}
-              >
-                Clear
-              </Button>
-            </div>
-          </div>
-        </Card>
-  
+          </Card>
+        )}
+
         {/* Error state */}
         {isError && (
           <Card>
-            <p className="text-sm text-rose-400">
+            <p className="text-sm text-spend">
               Failed to load transactions.
             </p>
             {error instanceof Error && (
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-muted">
                 {error.message}
               </p>
             )}
           </Card>
         )}
-  
+
         {/* List */}
-        <Card>
-          {isLoading ? (
-            <p className="text-sm text-slate-400">
-              Loading transactions...
-            </p>
-          ) : items.length === 0 ? (
-            <p className="text-sm text-slate-400">
-              No transactions found.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs text-slate-500">
-                <span>
-                  Showing {items.length}{" "}
-                  {items.length === 1
-                    ? "transaction"
-                    : "transactions"}
-                </span>
-                {typeof data?.total === "number" && (
+        {isLoading ? (
+          <Skeleton className="h-80" />
+        ) : items.length === 0 ? (
+          <Card className="flex flex-col items-center gap-3 py-12 text-center">
+            <p className="text-sm text-muted">No transactions found.</p>
+            <Button onClick={handleAddClick}>
+              <Icon name="plus" size={16} />
+              Add a transaction
+            </Button>
+          </Card>
+        ) : (
+          <Card className="px-3 pb-3 pt-1 sm:px-4 sm:pb-4">
+            {groups.map((group) => (
+              <section key={group.key}>
+                <div className="flex justify-between px-3 pb-2 pt-4 text-xs font-semibold uppercase tracking-wide text-muted">
+                  <span>{group.label}</span>
                   <span>
-                    Total in database: {data.total}
+                    {group.net >= 0 ? "+" : "−"}
+                    {formatMoney(Math.abs(group.net))}
                   </span>
-                )}
-              </div>
-              <table className="w-full text-sm">
-                <thead className="border-b border-slate-800 text-xs uppercase text-slate-400">
-                  <tr>
-                    <th className="py-2 text-left">Date</th>
-                    <th className="py-2 text-left">
-                      Description
-                    </th>
-                    <th className="py-2 pr-4 text-right">
-                      Amount
-                    </th>
-                    <th className="py-2 pl-4 text-left">Type</th>
-                    <th className="py-2 text-left">
-                      Category
-                    </th>
-                    <th className="py-2 text-left">
-                      Budget
-                    </th>
-                    <th className="py-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((tx) => (
-                    <tr
-                      key={tx.id}
-                      className="border-b border-slate-900/60 last:border-0"
-                    >
-                      <td className="py-2 text-xs text-slate-300">
-                        {formatDate(tx.date)}
-                      </td>
-                      <td className="py-2">
+                </div>
+                {group.items.map((tx) => (
+                  <div
+                    key={tx.id}
+                    className="group flex items-center gap-3 rounded-xl px-3 py-2.5 transition hover:bg-canvas sm:gap-4"
+                  >
+                    <CategoryAvatar
+                      name={tx.description || tx.category?.name}
+                      color={categoryColor(tx.category ?? null, tx.id)}
+                    />
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate text-sm font-medium text-ink">
                         {tx.description ?? "—"}
-                      </td>
-                      <td
-                        className={`py-2 pr-4 text-right ${
-                          tx.type === "income"
-                            ? "text-emerald-400"
-                            : tx.type === "investment"
-                            ? "text-blue-400"
-                            : "text-rose-400"
-                        }`}
-                      >
-                        {tx.type === "expense" ? "-" : "+"}
-                        {formatCurrency(tx.amount)}
-                      </td>
-                      <td className="py-2 pl-4 capitalize">
-                        {tx.type}
-                      </td>
-                      <td className="py-2">
-                        {tx.category?.name ?? "Uncategorized"}
-                      </td>
-                      <td className="py-2">
+                      </span>
+                      <span className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
+                        <span>{tx.category?.name ?? "Uncategorized"}</span>
+                        <span aria-hidden="true">·</span>
                         {tx.budget ? (
                           <button
-                            className="text-sky-400 hover:text-sky-300"
+                            className="font-medium text-accent hover:text-accent-hover"
                             type="button"
                             onClick={() =>
                               navigate(`/budgets/${tx.budget?.id}`)
@@ -312,53 +303,40 @@ const formatDate = (iso: string) => {
                             {tx.budget.name}
                           </button>
                         ) : (
-                          <span className="text-slate-400">Unscheduled</span>
+                          <span>Unscheduled</span>
                         )}
-                      </td>
-                      <td className="py-2 text-right text-xs">
-                        <button
-                          className="mr-3 text-sky-400 hover:text-sky-300"
-                          onClick={() =>
-                            handleEditClick(tx)
-                          }
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="text-rose-400 hover:text-rose-300"
-                          disabled={isDeleting}
-                          onClick={() =>
-                            deleteMutation.mutate(tx)
-                          }
-                        >
-                          {isDeleting ? "Deleting..." : "Delete"}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
-  
-        {/* Modal: create/edit transaction */}
-        {showForm && (
-          <TransactionForm
-            transaction={editing}
-            onClose={handleCloseForm}
-          />
+                      </span>
+                    </div>
+                    <span className="hidden sm:inline-flex">
+                      <TypeBadge type={tx.type} />
+                    </span>
+                    <span
+                      className={clsx(
+                        "min-w-[88px] text-right text-[15px] font-semibold",
+                        tx.type === "expense" ? "text-ink" : TYPE_META[tx.type].text
+                      )}
+                    >
+                      {formatSignedMoney(tx.amount, tx.type)}
+                    </span>
+                    <div className="flex gap-0.5 opacity-100 transition sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
+                      <IconButton label="Edit transaction" onClick={() => handleEditClick(tx)}>
+                        <Icon name="edit" size={16} />
+                      </IconButton>
+                      <IconButton
+                        label={deletingId === tx.id ? "Deleting..." : "Delete transaction"}
+                        className="hover:bg-spend-soft hover:text-spend"
+                        disabled={deleteMutation.isPending}
+                        onClick={() => deleteMutation.mutate(tx)}
+                      >
+                        <Icon name="trash" size={16} />
+                      </IconButton>
+                    </div>
+                  </div>
+                ))}
+              </section>
+            ))}
+          </Card>
         )}
-
-        <div className="sticky bottom-4 flex justify-end">
-          <Button
-            className="shadow-lg shadow-sky-500/20"
-            onClick={handleAddClick}
-          >
-            + Add
-          </Button>
-        </div>
       </div>
     );
   };
-  

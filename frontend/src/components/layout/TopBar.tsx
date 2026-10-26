@@ -1,27 +1,45 @@
 import React from "react";
 import { useLocation } from "react-router-dom";
+import { Icon } from "../ui/Icon";
 
-const titles: Record<string, string> = {
-  "/": "Dashboard",
-  "/transactions": "Transactions",
-  "/budgets": "Budgets",
-  "/categories": "Categories",
-  "/reports": "Reports",
+const titles: Record<string, { title: string; subtitle: string }> = {
+  "/": { title: "Dashboard", subtitle: "Personal finance, without the chaos." },
+  "/transactions": { title: "Transactions", subtitle: "Everything coming in and going out" },
+  "/budgets": { title: "Budgets", subtitle: "Plan your spending and track your limits" },
+  "/income": { title: "Income", subtitle: "Projections update as you type" },
+  "/categories": { title: "Categories", subtitle: "Organize your money" },
+  "/reports": { title: "Reports", subtitle: "Totals and breakdowns for any range" },
 };
 
-export const TopBar = () => {
+const resolveTitle = (pathname: string) => {
+  if (titles[pathname]) return titles[pathname];
+  if (pathname.startsWith("/budgets/"))
+    return { title: "Budget", subtitle: "Budget details" };
+  if (pathname.startsWith("/projections/"))
+    return { title: "Projections", subtitle: "Based on this month's activity" };
+  return { title: "Budget App", subtitle: "Personal finance, without the chaos." };
+};
+
+export const TopBar = ({ onMenu }: { onMenu: () => void }) => {
   const location = useLocation();
-  const title =
-    titles[location.pathname] ?? "Budget App";
+  const { title, subtitle } = resolveTitle(location.pathname);
 
   return (
-    <header className="flex items-center justify-between border-b border-slate-800 bg-slate-950/60 px-6 py-4">
-      <h1 className="text-xl font-semibold text-slate-50">
-        {title}
-      </h1>
-      <span className="text-sm text-slate-400">
-        Personal finance, without the chaos.
-      </span>
+    <header className="flex items-center gap-3">
+      <button
+        type="button"
+        onClick={onMenu}
+        aria-label="Open menu"
+        className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-line bg-surface text-ink lg:hidden"
+      >
+        <Icon name="menu" />
+      </button>
+      <div className="min-w-0">
+        <p className="text-[13px] text-muted">{subtitle}</p>
+        <h1 className="truncate text-2xl font-semibold tracking-tight text-ink sm:text-[28px]">
+          {title}
+        </h1>
+      </div>
     </header>
   );
 };

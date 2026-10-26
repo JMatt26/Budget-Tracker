@@ -1,24 +1,42 @@
-import { useState } from "react";
-import { Card } from "../../components/ui/Card";
-import type { Income } from "../../lib/types";
+import { Link } from "react-router-dom";
+import { Card, CardHeader } from "../../components/ui/Card";
+import type { Income, IncomeFrequency } from "../../lib/types";
 import { computeProjections, type ProjectionView } from "../../lib/incomeProjections";
+import { formatMoney } from "../../lib/format";
 
 const VIEW_LABELS: Record<ProjectionView, string> = {
-  weekly: "Weekly",
-  monthly: "Monthly",
-  yearly: "Yearly",
+  weekly: "Per week",
+  monthly: "Per month",
+  yearly: "Per year",
 };
 
-export const IncomeProjections = ({ income }: { income: Income | null }) => {
-  const [view, setView] = useState<ProjectionView>("monthly");
+const FREQUENCY_TEXT: Record<IncomeFrequency, string> = {
+  weekly: "every week",
+  biweekly: "every two weeks",
+  monthly: "every month",
+  yearly: "every year",
+};
+
+export const IncomeProjections = ({
+  income,
+  showEditLink = false,
+  title = "Earnings projection",
+}: {
+  income: Income | null;
+  showEditLink?: boolean;
+  title?: string;
+}) => {
+  const editLink = showEditLink ? (
+    <Link to="/income" className="text-[13px] font-medium text-accent hover:text-accent-hover">
+      {income ? "Edit income" : "Set up income"}
+    </Link>
+  ) : undefined;
 
   if (!income) {
     return (
       <Card>
-        <p className="text-xs uppercase tracking-wide text-slate-400">
-          Earnings projection
-        </p>
-        <p className="mt-2 text-sm text-slate-400">
+        <CardHeader title={title} action={editLink} />
+        <p className="text-sm text-muted">
           Set up your income to see weekly, monthly, and yearly projections.
         </p>
       </Card>
@@ -28,35 +46,25 @@ export const IncomeProjections = ({ income }: { income: Income | null }) => {
   const projections = computeProjections(Number(income.amount), income.frequency);
 
   return (
-    <Card className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-xs uppercase tracking-wide text-slate-400">
-          Earnings projection
-        </p>
-        <div className="flex gap-1 rounded-lg bg-slate-800/80 p-1">
-          {(Object.keys(VIEW_LABELS) as ProjectionView[]).map((key) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setView(key)}
-              className={[
-                "rounded-md px-2.5 py-1 text-xs font-medium transition",
-                view === key
-                  ? "bg-sky-500 text-white"
-                  : "text-slate-300 hover:bg-slate-700/80 hover:text-white",
-              ].join(" ")}
-            >
-              {VIEW_LABELS[key]}
-            </button>
-          ))}
-        </div>
+    <Card>
+      <CardHeader
+        title={title}
+        subtitle={`${formatMoney(income.amount)} paid ${FREQUENCY_TEXT[income.frequency]}`}
+        action={editLink}
+      />
+      <div className="flex flex-col">
+        {(Object.keys(VIEW_LABELS) as ProjectionView[]).map((key) => (
+          <div
+            key={key}
+            className="flex items-baseline justify-between border-t border-line-soft py-3.5"
+          >
+            <span className="text-sm text-muted">{VIEW_LABELS[key]}</span>
+            <span className="text-lg font-semibold tracking-tight text-saved">
+              {formatMoney(projections[key])}
+            </span>
+          </div>
+        ))}
       </div>
-      <p className="text-3xl font-semibold text-emerald-400">
-        ${projections[view].toFixed(2)}
-        <span className="ml-1 text-sm font-normal text-slate-400">
-          / {view.replace("ly", "")}
-        </span>
-      </p>
     </Card>
   );
 };

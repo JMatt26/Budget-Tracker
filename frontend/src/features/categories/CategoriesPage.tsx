@@ -1,8 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
-import { Card } from "../../components/ui/Card";
+import { Card, Skeleton } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
+import { Modal } from "../../components/ui/Modal";
+import { Field, FormActions, FormError } from "../../components/ui/Field";
+import { ChipGroup, Segmented } from "../../components/ui/Segmented";
+import { Icon } from "../../components/ui/Icon";
+import { CategoryAvatar, TypeBadge } from "../../components/ui/Progress";
+import { categoryColor } from "../../lib/format";
 import type { Category } from "../../lib/types";
 
 type CategoryListResponse = {
@@ -31,6 +37,12 @@ type CategoryFormData = {
   name: string;
   type: "income" | "expense" | "investment";
 };
+
+const TYPE_OPTIONS: { value: CategoryFormData["type"]; label: string }[] = [
+  { value: "expense", label: "Expense" },
+  { value: "income", label: "Income" },
+  { value: "investment", label: "Investment" },
+];
 
 const CategoryForm = ({
   category,
@@ -96,67 +108,49 @@ const CategoryForm = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <Card className="w-full max-w-md">
-        <h2 className="mb-4 text-lg font-semibold">
-          {category ? "Edit Category" : "Create Category"}
-        </h2>
+    <Modal title={category ? "Edit category" : "Create category"} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <Field label="Name">
+          <input
+            type="text"
+            value={formData.name}
+            onChange={(e) =>
+              setFormData({ ...formData, name: e.target.value })
+            }
+            className="field"
+            placeholder="Category name"
+            maxLength={100}
+            autoFocus
+          />
+        </Field>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">Name</label>
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) =>
-                setFormData({ ...formData, name: e.target.value })
-              }
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-              placeholder="Category name"
-              maxLength={100}
-              autoFocus
-            />
-          </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[13px] font-medium text-muted">Type</span>
+          <Segmented
+            label="Type"
+            fullWidth
+            options={TYPE_OPTIONS}
+            value={formData.type}
+            onChange={(type) => setFormData({ ...formData, type })}
+          />
+        </div>
 
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">Type</label>
-            <select
-              value={formData.type}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  type: e.target.value as "income" | "expense" | "investment",
-                })
-              }
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-            >
-              <option value="expense">Expense</option>
-              <option value="income">Income</option>
-              <option value="investment">Investment</option>
-            </select>
-          </div>
+        {error && <FormError>{error}</FormError>}
 
-          {error && (
-            <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-400">
-              {error}
-            </div>
-          )}
-
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending
-                ? "Saving..."
-                : category
-                ? "Save Changes"
-                : "Create"}
-            </Button>
-          </div>
-        </form>
-      </Card>
-    </div>
+        <FormActions>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={mutation.isPending}>
+            {mutation.isPending
+              ? "Saving..."
+              : category
+              ? "Save changes"
+              : "Create"}
+          </Button>
+        </FormActions>
+      </form>
+    </Modal>
   );
 };
 
@@ -172,49 +166,60 @@ const CategoryActions = ({
   onClose: () => void;
 }) => {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <Card className="w-full max-w-sm">
-        <h2 className="mb-4 text-lg font-semibold">Category Actions</h2>
-        <div className="mb-4 rounded-lg bg-slate-800/50 p-3">
-          <p className="text-sm font-medium text-slate-200">{category.name}</p>
+    <Modal title="Category actions" size="sm" onClose={onClose}>
+      <div className="mb-4 flex items-center gap-3 rounded-xl bg-canvas p-3">
+        <CategoryAvatar name={category.name} color={categoryColor(category)} />
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-ink">{category.name}</p>
           {category.type && (
-            <p className="mt-1 text-xs text-slate-400 capitalize">
+            <p className="mt-0.5 text-xs capitalize text-muted">
               {category.type}
             </p>
           )}
         </div>
-        <div className="space-y-2">
-          <Button
-            variant="primary"
-            className="w-full"
-            onClick={() => {
-              onClose();
-              onEdit();
-            }}
-          >
-            Edit
-          </Button>
-          <Button
-            variant="ghost"
-            className="w-full text-red-400 hover:bg-red-500/10 hover:text-red-300"
-            onClick={() => {
-              onClose();
-              onDelete();
-            }}
-          >
-            Delete
-          </Button>
-          <Button variant="ghost" className="w-full" onClick={onClose}>
-            Cancel
-          </Button>
-        </div>
-      </Card>
-    </div>
+      </div>
+      <div className="flex flex-col gap-2">
+        <Button
+          className="w-full"
+          onClick={() => {
+            onClose();
+            onEdit();
+          }}
+        >
+          <Icon name="edit" size={16} />
+          Edit
+        </Button>
+        <Button
+          variant="danger"
+          className="w-full"
+          onClick={() => {
+            onClose();
+            onDelete();
+          }}
+        >
+          <Icon name="trash" size={16} />
+          Delete
+        </Button>
+        <Button variant="ghost" className="w-full" onClick={onClose}>
+          Cancel
+        </Button>
+      </div>
+    </Modal>
   );
 };
 
+type TypeFilter = "all" | Category["type"];
+
+const TYPE_FILTERS: { value: TypeFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "expense", label: "Expense" },
+  { value: "income", label: "Income" },
+  { value: "investment", label: "Investment" },
+];
+
 export const CategoriesPage: React.FC = () => {
   const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [actionCategory, setActionCategory] = useState<Category | null>(null);
@@ -250,57 +255,67 @@ export const CategoriesPage: React.FC = () => {
     }
   };
 
+  const visible = (data?.items ?? []).filter(
+    (cat) => typeFilter === "all" || cat.type === typeFilter
+  );
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-slate-100">Categories</h2>
-        <div className="flex flex-1 items-center justify-end gap-2">
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="flex min-h-[42px] w-full max-w-xs items-center gap-2 rounded-xl border border-line bg-surface px-3 text-muted transition focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20">
+          <Icon name="search" size={16} />
+          <span className="sr-only">Search categories</span>
           <input
             type="text"
             placeholder="Search categories..."
-            className="w-full max-w-xs rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+            className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-ink placeholder:text-muted/70 focus:outline-none focus:ring-0"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <Button onClick={() => setShowCreateForm(true)}>Create</Button>
-        </div>
+        </label>
+        <ChipGroup label="Category type" options={TYPE_FILTERS} value={typeFilter} onChange={setTypeFilter} />
+        <Button variant="dark" className="ml-auto" onClick={() => setShowCreateForm(true)}>
+          <Icon name="plus" size={16} strokeWidth={2.2} />
+          Create
+        </Button>
       </div>
 
       {isLoading || !data ? (
-        <Card className="h-32 animate-pulse bg-slate-900/80" />
-      ) : data.items.length === 0 ? (
-        <Card>
-          <p className="text-sm text-slate-400">
-            No categories found. Create your first category to get started.
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Skeleton className="h-20" />
+          <Skeleton className="h-20" />
+          <Skeleton className="h-20" />
+        </div>
+      ) : visible.length === 0 ? (
+        <Card className="py-12 text-center">
+          <p className="text-sm text-muted">
+            {data.items.length === 0
+              ? "No categories found. Create your first category to get started."
+              : "No categories of this type match your search."}
           </p>
         </Card>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {data.items.map((cat) => (
-            <Card
+          {visible.map((cat) => (
+            <button
               key={cat.id}
-              className="cursor-pointer transition hover:border-sky-500/50 hover:bg-slate-900/80"
+              type="button"
+              className="card-hover flex items-center gap-3.5 rounded-2xl border border-line bg-surface p-4 text-left"
               onClick={() => setActionCategory(cat)}
             >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <h3 className="font-medium text-slate-100">{cat.name}</h3>
-                  {cat.type && (
-                    <span
-                      className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${
-                        cat.type === "income"
-                          ? "bg-green-500/20 text-green-400"
-                          : cat.type === "investment"
-                          ? "bg-blue-500/20 text-blue-400"
-                          : "bg-red-500/20 text-red-400"
-                      }`}
-                    >
-                      {cat.type}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </Card>
+              <CategoryAvatar size="lg" name={cat.name} color={categoryColor(cat)} />
+              <span className="flex min-w-0 flex-1 flex-col gap-1">
+                <span className="truncate text-sm font-semibold text-ink">{cat.name}</span>
+                {cat.type && (
+                  <span>
+                    <TypeBadge type={cat.type} />
+                  </span>
+                )}
+              </span>
+              <span className="text-muted" aria-hidden="true">
+                <Icon name="more" size={18} />
+              </span>
+            </button>
           ))}
         </div>
       )}

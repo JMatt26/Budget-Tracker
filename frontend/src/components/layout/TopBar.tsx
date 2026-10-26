@@ -6,7 +6,7 @@ const titles: Record<string, { title: string; subtitle: string }> = {
   "/": { title: "Dashboard", subtitle: "Personal finance, without the chaos." },
   "/transactions": { title: "Transactions", subtitle: "Everything coming in and going out" },
   "/budgets": { title: "Budgets", subtitle: "Plan your spending and track your limits" },
-  "/income": { title: "Income", subtitle: "Projections update as you type" },
+  "/income": { title: "Income", subtitle: "Every source, on its own schedule" },
   "/categories": { title: "Categories", subtitle: "Organize your money" },
   "/reports": { title: "Reports", subtitle: "Totals and breakdowns for any range" },
 };

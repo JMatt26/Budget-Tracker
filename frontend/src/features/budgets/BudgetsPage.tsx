@@ -141,7 +141,6 @@ const BudgetForm = ({ onClose }: { onClose: () => void }) => {
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState({
     name: "",
-    limit: "",
     period: "monthly" as BudgetPeriod,
     startDate: "",
     endDate: "",
@@ -210,7 +209,6 @@ const BudgetForm = ({ onClose }: { onClose: () => void }) => {
     mutationFn: async () => {
       const payload = {
         name: formData.name.trim(),
-        limit: Number(formData.limit),
         start_date: formData.startDate,
         end_date: formData.endDate,
       };
@@ -232,10 +230,6 @@ const BudgetForm = ({ onClose }: { onClose: () => void }) => {
 
     if (!formData.name.trim()) {
       setError("Name is required.");
-      return;
-    }
-    if (!formData.limit || Number(formData.limit) <= 0) {
-      setError("Limit must be greater than 0.");
       return;
     }
     if (formData.period === "specified") {
@@ -274,19 +268,9 @@ const BudgetForm = ({ onClose }: { onClose: () => void }) => {
             autoFocus
           />
         </Field>
-        <Field label="Limit">
-          <input
-            type="number"
-            step="0.01"
-            value={formData.limit}
-            onChange={(e) =>
-              setFormData((prev) => ({ ...prev, limit: e.target.value }))
-            }
-            className="field"
-            placeholder="0.00"
-            min="0"
-          />
-        </Field>
+        <p className="text-sm text-muted">
+          The budget limit is your total monthly income, so it updates when your income does.
+        </p>
         <div className="flex flex-col gap-1.5">
           <span className="text-[13px] font-medium text-muted">Period</span>
           <Segmented

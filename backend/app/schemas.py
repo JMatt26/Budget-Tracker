@@ -60,7 +60,6 @@ class SummaryResponse(BaseModel):
 
 class BudgetBase(BaseModel):
     name: str = Field(..., max_length=100)
-    limit: Decimal = Field(..., max_digits=10, decimal_places=2)
     start_date: DateType
     end_date: DateType
 
@@ -71,17 +70,21 @@ class BudgetCreate(BudgetBase):
 
 class BudgetUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=100)
-    limit: Optional[Decimal] = Field(None, max_digits=10, decimal_places=2)
     start_date: Optional[DateType] = None
     end_date: Optional[DateType] = None
 
 
-class BudgetRead(BudgetBase):
+class BudgetCore(BudgetBase):
     id: int
     created_at: datetime
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class BudgetRead(BudgetCore):
+    # Not stored: always the user's current total monthly income.
+    limit: Decimal
 
 
 class BudgetStatus(BaseModel):
@@ -142,7 +145,7 @@ class TransactionRead(TransactionBase):
     created_at: datetime
     updated_at: datetime
     category: Optional[CategoryRead] = None
-    budget: Optional[BudgetRead] = None
+    budget: Optional[BudgetCore] = None
 
     @field_serializer("amount")
     def serialize_amount(self, v: Decimal) -> float:
@@ -161,8 +164,9 @@ class TransactionUpdate(BaseModel):
 
 
 class IncomeBase(BaseModel):
+    name: str = Field("Income", min_length=1, max_length=100)
     amount: Decimal = Field(..., max_digits=10, decimal_places=2, gt=0)
-    frequency: str = Field(..., pattern="^(weekly|biweekly|monthly|yearly)$")
+    frequency: str = Field(..., pattern="^(weekly|biweekly|semimonthly|monthly|yearly)$")
 
 
 class IncomeCreate(IncomeBase):
@@ -170,8 +174,9 @@ class IncomeCreate(IncomeBase):
 
 
 class IncomeUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
     amount: Optional[Decimal] = Field(None, max_digits=10, decimal_places=2, gt=0)
-    frequency: Optional[str] = Field(None, pattern="^(weekly|biweekly|monthly|yearly)$")
+    frequency: Optional[str] = Field(None, pattern="^(weekly|biweekly|semimonthly|monthly|yearly)$")
 
 
 class IncomeRead(IncomeBase):

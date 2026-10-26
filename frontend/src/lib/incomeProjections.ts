@@ -5,6 +5,7 @@ export type ProjectionView = "weekly" | "monthly" | "yearly";
 const PERIODS_PER_YEAR: Record<IncomeFrequency, number> = {
   weekly: 52,
   biweekly: 26,
+  semimonthly: 24,
   monthly: 12,
   yearly: 1,
 };
@@ -20,3 +21,18 @@ export const computeProjections = (
     yearly,
   };
 };
+
+export const sumProjections = (
+  incomes: { amount: number | string; frequency: IncomeFrequency }[]
+): Record<ProjectionView, number> =>
+  incomes.reduce(
+    (total, inc) => {
+      const p = computeProjections(Number(inc.amount), inc.frequency);
+      return {
+        weekly: total.weekly + p.weekly,
+        monthly: total.monthly + p.monthly,
+        yearly: total.yearly + p.yearly,
+      };
+    },
+    { weekly: 0, monthly: 0, yearly: 0 }
+  );

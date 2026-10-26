@@ -9,8 +9,14 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..db import get_db
 from ..auth import get_current_user
+from ..income_utils import monthly_income_total
 
 router = APIRouter(prefix="/budgets", tags=["budgets"])
+
+
+def _read(budget: models.Budget, limit: Decimal) -> schemas.BudgetRead:
+    """Serialize a budget with the user's monthly income as its limit."""
+    return schemas.BudgetRead.model_validate(budget).model_copy(update={"limit": limit})
 
 
 @router.post(
@@ -29,7 +35,7 @@ def create_budget(
     db.add(budget)
     db.commit()
     db.refresh(budget)
-    return budget
+    return _read(budget, monthly_income_total(db, current_user.id))
 
 
 @router.get("/", response_model=schemas.BudgetListResponse)
@@ -56,8 +62,9 @@ def list_budgets(
         .all()
     )
 
+    monthly_income = monthly_income_total(db, current_user.id)
     return schemas.BudgetListResponse(
-        items=items,
+        items=[_read(b, monthly_income) for b in items],
         total=total,
         limit=limit,
         offset=offset,
@@ -85,7 +92,7 @@ def get_budget(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Budget not found.",
         )
-    return budget
+    return _read(budget, monthly_income_total(db, current_user.id))
 
 
 @router.put("/{budget_id}", response_model=schemas.BudgetRead)
@@ -115,7 +122,7 @@ def update_budget(
 
     db.commit()
     db.refresh(budget)
-    return budget
+    return _read(budget, monthly_income_total(db, current_user.id))
 
 
 @router.delete("/{budget_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -192,12 +199,13 @@ def get_budget_status(
     # Prorate the limit for the requested sub-period based on its share of
     # the budget's total days, so a weekly slice of a monthly budget gets a
     # weekly-sized limit instead of the full monthly one.
+    monthly_income = monthly_income_total(db, current_user.id)
     total_days = (budget.end_date - budget.start_date).days + 1
     period_days = (period_end - period_start).days + 1
     period_limit = (
-        Decimal(budget.limit) * Decimal(period_days) / Decimal(total_days)
+        monthly_income * Decimal(period_days) / Decimal(total_days)
         if total_days > 0
-        else Decimal(budget.limit)
+        else monthly_income
     )
 
     # Sum of transactions within the (sub-)period, by type.
@@ -223,7 +231,7 @@ def get_budget_status(
     exceeded = remaining < 0
 
     return schemas.BudgetStatus(
-        budget=budget,
+        budget=_read(budget, monthly_income),
         period_start=period_start,
         period_end=period_end,
         period_limit=period_limit,

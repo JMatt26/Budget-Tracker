@@ -6,7 +6,7 @@ import { api } from "../../lib/api";
 import { Card, CardHeader, Skeleton } from "../../components/ui/Card";
 import { Segmented } from "../../components/ui/Segmented";
 import { ProgressBar, budgetTone, TONE_TEXT, CategoryAvatar } from "../../components/ui/Progress";
-import { fetchIncome } from "../../lib/income-api";
+import { fetchIncomes } from "../../lib/income-api";
 import { fetchBudgets, fetchBudgetStatus } from "../../lib/budget-api";
 import {
   fetchMonthSummary,
@@ -71,9 +71,9 @@ export const DashboardPage = () => {
     queryFn: fetchMonthSummary,
   });
 
-  const { data: income } = useQuery({
+  const { data: incomes } = useQuery({
     queryKey: ["income"],
-    queryFn: fetchIncome,
+    queryFn: fetchIncomes,
   });
 
   if (isLoading || monthLoading || !data) {
@@ -171,7 +171,7 @@ export const DashboardPage = () => {
 
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
         <SpendingPace monthExpense={readMetric(monthSummary, "total_expense")} />
-        <IncomeProjections income={income ?? null} showEditLink title="Earnings" />
+        <IncomeProjections incomes={incomes ?? []} showEditLink title="Earnings" />
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">

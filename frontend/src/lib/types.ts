@@ -68,10 +68,11 @@ export interface SummaryResponse {
   }[];
 }
 
-export type IncomeFrequency = "weekly" | "biweekly" | "monthly" | "yearly";
+export type IncomeFrequency = "weekly" | "biweekly" | "semimonthly" | "monthly" | "yearly";
 
 export interface Income {
   id: number;
+  name: string;
   amount: number;
   frequency: IncomeFrequency;
   created_at?: string;

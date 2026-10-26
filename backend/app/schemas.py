@@ -86,6 +86,9 @@ class BudgetRead(BudgetBase):
 
 class BudgetStatus(BaseModel):
     budget: BudgetRead
+    period_start: DateType
+    period_end: DateType
+    period_limit: Decimal
     total_expense: Decimal
     total_investment: Decimal
     total_income: Decimal

@@ -34,6 +34,9 @@ export interface Budget {
 
 export interface BudgetStatus {
   budget: Budget;
+  period_start: string;
+  period_end: string;
+  period_limit: number;
   total_expense: number;
   total_investment: number;
   total_income: number;

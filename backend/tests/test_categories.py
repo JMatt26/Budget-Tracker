@@ -5,6 +5,7 @@ def test_create_category(auth_client):
     payload = {
         "name": "Groceries",
         "type": "expense",
+        "payment_method": "Cash",
     }
 
     resp = auth_client.post("/categories/", json=payload)
@@ -96,6 +97,7 @@ def test_delete_category_with_existing_transaction_fails(auth_client):
         "description": "Burger",
         "date": "2025-11-19",
         "type": "expense",
+        "payment_method": "Cash",
         "category_id": category_id,
     }
     tx_resp = auth_client.post("/transactions/", json=tx_payload)

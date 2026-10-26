@@ -20,7 +20,8 @@ import {
 import { fetchBudget, fetchBudgetStatus } from "../../lib/budget-api";
 import { api } from "../../lib/api";
 import { categoryColor, formatMoney, formatSignedMoney, TYPE_META } from "../../lib/format";
-import type { Category, BudgetCategory, Transaction, Budget } from "../../lib/types";
+import { PAYMENT_METHODS } from "../../lib/types";
+import type { Category, BudgetCategory, Transaction, Budget, PaymentMethod } from "../../lib/types";
 
 const formatCurrency = formatMoney;
 
@@ -275,6 +276,7 @@ type BudgetTransactionFormData = {
   type: "income" | "expense" | "investment";
   category_id: string;
   description: string;
+  payment_method: PaymentMethod | "";
 };
 
 const BudgetTransactionForm = ({
@@ -291,6 +293,7 @@ const BudgetTransactionForm = ({
     type: "expense",
     category_id: "",
     description: "",
+    payment_method: "",
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -305,6 +308,7 @@ const BudgetTransactionForm = ({
         date: data.date,
         amount: Number(data.amount),
         type: data.type,
+        payment_method: data.type === "expense" ? data.payment_method : null,
         description: data.description.trim() || null,
         category_id: data.category_id ? Number(data.category_id) : null,
         budget_id: budgetId,
@@ -339,6 +343,10 @@ const BudgetTransactionForm = ({
       setError("Amount must be greater than 0");
       return;
     }
+    if (formData.type === "expense" && !formData.payment_method) {
+      setError("Choose a payment method");
+      return;
+    }
 
     mutation.mutate(formData);
   };
@@ -353,6 +361,25 @@ const BudgetTransactionForm = ({
           value={formData.type}
           onChange={(type) => setFormData({ ...formData, type })}
         />
+
+        {formData.type === "expense" && (
+          <Field label="Payment method">
+            <select
+              value={formData.payment_method}
+              onChange={(e) =>
+                setFormData({ ...formData, payment_method: e.target.value as PaymentMethod | "" })
+              }
+              className="field"
+            >
+              <option value="">Select…</option>
+              {PAYMENT_METHODS.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Date">

@@ -152,6 +152,18 @@ def update_transaction(
                 detail="Cateogry does not exist.",
             )
 
+    # An expense must always carry a payment method; other types never do.
+    final_type = update_data.get("type", tx.type)
+    final_method = update_data.get("payment_method", tx.payment_method)
+    if final_type == "expense":
+        if final_method is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="payment_method is required for expenses.",
+            )
+    else:
+        update_data["payment_method"] = None
+
     for field, value in update_data.items():
         setattr(tx, field, value)
 

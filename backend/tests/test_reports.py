@@ -33,6 +33,7 @@ def test_summary_with_transactions(auth_client):
         "description": "Rent",
         "date": date.today().isoformat(),
         "type": "expense",
+        "payment_method": "Cash",
         "category_id": None,
     }
     resp_expense = auth_client.post("/transactions/", json=expense_payload)
@@ -73,6 +74,7 @@ def test_summary_grouped_by_category(auth_client: TestClient):
         "description": "Groceries",
         "date": "2025-01-01",
         "type": "expense",
+        "payment_method": "Cash",
         "category_id": food_id,
     }
     tx2 = {
@@ -122,6 +124,7 @@ def test_transactions_export_csv(auth_client: TestClient):
         "description": "Test export",
         "date": "2025-01-03",
         "type": "expense",
+        "payment_method": "Cash",
     }
     resp_create = auth_client.post("/transactions", json=tx_payload)
     assert resp_create.status_code == 201, resp_create.text

@@ -1,6 +1,6 @@
 from datetime import datetime, date as DateType
-from typing import Optional, List
-from pydantic import BaseModel, Field, ConfigDict, EmailStr, field_serializer
+from typing import Literal, Optional, List
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, field_serializer, model_validator
 from decimal import Decimal
 
 
@@ -24,6 +24,9 @@ class CategoryUpdate(BaseModel):
     type: Optional[str] = Field(None, pattern="^(income|expense|investment)$")
 
 
+PaymentMethod = Literal["Amex", "Visa", "Debit", "Cash"]
+
+
 class TransactionBase(BaseModel):
     amount: Decimal = Field(..., max_digits=10, decimal_places=2)
     description: Optional[str] = Field(None, max_length=255)
@@ -31,9 +34,7 @@ class TransactionBase(BaseModel):
     type: str = Field(..., pattern="^(income|expense|investment)$")
     category_id: Optional[int] = None
     budget_id: Optional[int] = None
-
-
-
+    payment_method: Optional[PaymentMethod] = None
 
 
 class SummaryTotals(BaseModel):
@@ -137,7 +138,14 @@ class UserRead(UserBase):
     model_config = ConfigDict(from_attributes=True)
 
 class TransactionCreate(TransactionBase):
-    pass
+    @model_validator(mode="after")
+    def check_payment_method(self):
+        if self.type == "expense":
+            if self.payment_method is None:
+                raise ValueError("payment_method is required for expenses.")
+        else:
+            self.payment_method = None
+        return self
 
 
 class TransactionRead(TransactionBase):
@@ -161,6 +169,7 @@ class TransactionUpdate(BaseModel):
     type: Optional[str] = Field(None, pattern="^(income|expense|investment)$")
     category_id: Optional[int] = None
     budget_id: Optional[int] = None
+    payment_method: Optional[PaymentMethod] = None
 
 
 class IncomeBase(BaseModel):

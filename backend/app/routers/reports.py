@@ -186,6 +186,7 @@ def export_transactions_csv(
             "description",
             "category_id",
             "budget_id",
+            "payment_method",
         ]
     )
 
@@ -199,6 +200,7 @@ def export_transactions_csv(
                 tx.description or "",
                 tx.category_id if tx.category_id is not None else "",
                 tx.budget_id if tx.budget_id is not None else "",
+                tx.payment_method or "",
             ]
         )
 

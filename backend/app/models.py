@@ -58,6 +58,9 @@ class Transaction(Base):
 
     type = Column(String(20), nullable=False)
 
+    # Amex | Visa | Debit | Cash; required for expenses, null otherwise
+    payment_method = Column(String(20), nullable=True)
+
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
         )

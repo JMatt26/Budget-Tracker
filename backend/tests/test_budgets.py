@@ -95,6 +95,7 @@ def test_budget_status_tracks_expenses(auth_client):
         "description": "Groceries 1",
         "date": today.isoformat(),
         "type": "expense",
+        "payment_method": "Cash",
         "category_id": None,
         "budget_id": budget_id,
     }
@@ -103,6 +104,7 @@ def test_budget_status_tracks_expenses(auth_client):
         "description": "Groceries 2",
         "date": (today + timedelta(days=1)).isoformat(),
         "type": "expense",
+        "payment_method": "Cash",
         "category_id": None,
         "budget_id": budget_id,
     }
@@ -145,6 +147,7 @@ def test_budget_status_tracks_investment_and_income(auth_client):
         "description": "Groceries",
         "date": today.isoformat(),
         "type": "expense",
+        "payment_method": "Cash",
         "category_id": None,
         "budget_id": budget_id,
     }
@@ -206,6 +209,7 @@ def test_budget_status_prorates_limit_for_sub_period(auth_client):
         "description": "Week 1 expense",
         "date": week1_start.isoformat(),
         "type": "expense",
+        "payment_method": "Cash",
         "category_id": None,
         "budget_id": budget_id,
     }
@@ -214,6 +218,7 @@ def test_budget_status_prorates_limit_for_sub_period(auth_client):
         "description": "Week 2 expense, should not count toward week 1",
         "date": week2_start.isoformat(),
         "type": "expense",
+        "payment_method": "Cash",
         "category_id": None,
         "budget_id": budget_id,
     }

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
+import { PAYMENT_METHODS } from "../../lib/types";
 import type { Transaction, Category, Budget, TransactionType } from "../../lib/types";
 import { api } from "../../lib/api";
 import { Button } from "../../components/ui/Button";
@@ -13,11 +14,13 @@ import { categoryColor, toLocalISODate } from "../../lib/format";
 import React from "react";
 import { fetchBudgets } from "../../lib/budget-api";
 
-const schema = z.object({
+const schema = z
+  .object({
   date: z.string(),
   amount: z.number().positive(),
   description: z.string().optional(),
   type: z.enum(["income", "expense", "investment"]),
+  payment_method: z.enum(["Amex", "Visa", "Debit", "Cash"]).optional().or(z.literal("")),
   category_id: z
     .string()
     .optional()
@@ -26,7 +29,11 @@ const schema = z.object({
     .string()
     .optional()
     .transform((val) => (val ? Number(val) : undefined)),
-});
+  })
+  .refine((v) => v.type !== "expense" || !!v.payment_method, {
+    message: "Choose a payment method.",
+    path: ["payment_method"],
+  });
 
 type FormValues = z.input<typeof schema>;
 type FormValuesOutput = z.infer<typeof schema>;
@@ -74,12 +81,14 @@ export const TransactionForm = ({
       amount: transaction.amount,
       description: transaction.description ?? "",
       type: transaction.type,
+      payment_method: transaction.payment_method ?? "",
       category_id: transaction.category_id ? String(transaction.category_id) : undefined,
       budget_id: transaction.budget_id ? String(transaction.budget_id) : undefined,
     }
   : {
       date: toLocalISODate(new Date()),
       type: "expense",
+      payment_method: "",
     };
 
 
@@ -133,6 +142,8 @@ export const TransactionForm = ({
         date: transformedValues.date,
         amount: Number(transformedValues.amount),
         type: transformedValues.type,
+        payment_method:
+          transformedValues.type === "expense" ? transformedValues.payment_method : null,
       };
 
       // Convert empty description to null (Pydantic expects null, not empty string for optional fields)
@@ -265,6 +276,19 @@ export const TransactionForm = ({
             )}
           </div>
         </div>
+
+        {selectedType === "expense" && (
+          <Field label="Payment method" error={errors.payment_method?.message}>
+            <select className="field" {...register("payment_method")}>
+              <option value="">Select…</option>
+              {PAYMENT_METHODS.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Date" error={errors.date?.message}>

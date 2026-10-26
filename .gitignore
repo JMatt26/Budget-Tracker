@@ -15,3 +15,6 @@ dist/
 *.bak
 *.bak-*
 sql_app.db*
+
+# Private notes that must not be published (this repo is public)
+*.local.md

@@ -2,7 +2,7 @@
 
 **Stack:** Vercel (frontend, existing Pro team) + Render free web service (FastAPI) + Neon free Postgres.
 **Audience:** a human following along, or Claude executing it. Every step has an owner, exact files/commands, and a "Done when" check.
-**Cost:** $0 added. (Optional: Render Starter ~$7/mo removes cold starts. The AWS alternative is parked in [DEPLOYMENT_PLAN_AWS.md](DEPLOYMENT_PLAN_AWS.md), written against the older code.)
+**Cost:** $0 added. (Optional: Render Starter ~$7/mo removes cold starts.)
 **Free-tier limits change.** Confirm current terms on each provider's pricing page before step 3.1.
 
 ## Status
@@ -297,7 +297,7 @@ Use two throwaway accounts, A and B:
 - **Capacity:** watch Neon storage/compute-hours and Render hours; first upgrade if needed is Render Starter (~$7/mo).
 - **Dependencies:** Dependabot (pip, npm, github-actions); periodic `pip-audit`/`npm audit`.
 - **Privacy:** publish a privacy notice and terms before inviting people; add `DELETE /auth/me` (model cascades already exist) before onboarding strangers. Decide whether non-Canadian hosting is acceptable for your users' data.
-- **Move to AWS later:** this work is provider-neutral; the AWS plan needs refreshing against current code (it predates PR #41-#44).
+- **Move to another host later:** this work is provider-neutral (env-driven DB/CORS, Alembic migrations, gunicorn). Moving to e.g. AWS would only add a Dockerfile, infrastructure and a CI deploy step.
 
 ---
 

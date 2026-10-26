@@ -82,7 +82,7 @@ Set in `backend/.env` locally and in the host's dashboard in production (see `ba
 
 ## Deployment
 
-See [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md) for the step-by-step free-tier setup (Neon, Render, Vercel) and [DEPLOYMENT_PLAN_AWS.md](DEPLOYMENT_PLAN_AWS.md) for the AWS alternative.
+See [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md) for the step-by-step free-tier setup (Neon, Render, Vercel).
 
 ## Todo
 

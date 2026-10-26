@@ -5,6 +5,23 @@
 **Cost:** $0 added. (Optional: Render Starter ~$7/mo removes cold starts. The AWS alternative is parked in [DEPLOYMENT_PLAN_AWS.md](DEPLOYMENT_PLAN_AWS.md), written against the older code.)
 **Free-tier limits change.** Confirm current terms on each provider's pricing page before step 3.1.
 
+## Status
+
+**Part 1 is implemented** on branch `deploy-prep` (14 commits on top of `origin/main`, nothing pushed). Locally verified from fresh installs: 125 backend tests on SQLite, 126 on Postgres 16, and frontend lint, typecheck, 55 unit tests and a production build. **Parts 2-5 are pending** (PR, provisioning, live verification).
+
+Where the build differed from the draft below (the steps were updated to match; this is the summary):
+
+| Finding while building | What was done |
+|---|---|
+| Two cross-user leaks (found by the new isolation tests): a transaction could be linked to **another user's budget** (create and update) and moved into **another user's category** (update), returning that user's budget/category details | Fixed in `routers/transactions.py`; regression tests in `test_isolation.py` |
+| **Worker freeze under concurrency** (found by the Postgres load test in 1.8): `get_current_user` was `async def` but queried the DB, so with the pool busy the event loop blocked and gunicorn killed the worker after 60 s | Made it a sync dependency, pool 5+5; verified with 80 parallel requests, no timeouts, no duplicate cycles |
+| `bcrypt` is **not needed**: passwords use `pbkdf2_sha256` | Removed from the dependency list; also dropped `sqlmodel`, `aiosqlite`, `greenlet`, `pytest-asyncio` (unused) |
+| `npm run lint` was **broken before this work** (ESLint 9 needs a flat config; none existed) | Added `eslint.config.mjs`; the 19 `no-explicit-any` findings are switched off by design, the one hooks warning was fixed properly |
+| A missing `VITE_API_URL` only threw in the browser | The Vite config now also **fails the production build** |
+| Postgres tests in CI | Controlled by `REQUIRE_POSTGRES_TESTS=1` (set only in the Postgres job) rather than `CI=true`, because the SQLite job also runs in CI; it uses `-m "not postgres"` |
+| The extra `alembic upgrade/check` CI step | Dropped: `test_migrations.py` already does upgrade, check, downgrade, upgrade on a throwaway database |
+| Process note | An early commit accidentally included a local dev-DB backup (`backend/sql_app.db.bak-before-income-migration`). The unpushed branch was rewritten to remove it; the file was restored on disk unchanged; `.gitignore` now covers `*.db*`, `*.bak*`, `.env.*` |
+
 ## What changed since rev. 1 (why this plan was remade)
 
 `main` gained PRs #41-#44 (multiple incomes, payment methods, budget targets/charts, recurring budgets with history). Effects on deployment:
@@ -77,7 +94,7 @@ Fix any leak in the router (`user_id == current_user.id`) and keep the test.
 ### 1.3 [AGENT] Database layer: Postgres-safe, SQLite kept for dev/tests
 Files: [config.py](backend/app/core/config.py), [db.py](backend/app/db.py).
 - `config.py`: normalize `postgres://` and `postgresql://` to `postgresql+psycopg://` (Neon/Render hand out the short form); leave `sslmode=require` in the URL.
-- `db.py`: only pass `connect_args={"check_same_thread": False}` for SQLite; for Postgres use `pool_size=3, max_overflow=2, pool_pre_ping=True, pool_recycle=300` (Neon drops idle connections after ~5 minutes).
+- `db.py`: only pass `connect_args={"check_same_thread": False}` for SQLite; for Postgres use `pool_size=5, max_overflow=5, pool_timeout=30, pool_pre_ping=True, pool_recycle=300` (Neon drops idle connections after ~5 minutes).
 - `tests/test_db_url.py` for the normalizer (postgres://, postgresql://, already normalized, sqlite untouched).
 
 **Done when:** unit tests pass; suite green on SQLite.
@@ -146,7 +163,7 @@ Via `curl`/a script: register, login, categories, transactions (expense needs a 
 Today [conftest.py](backend/tests/conftest.py) hard-codes an in-memory SQLite engine, so tests can't prove anything about Postgres. Make the suite database-agnostic:
 - `conftest.py`: read `TEST_DATABASE_URL`. Unset -> current in-memory SQLite (`StaticPool`, `check_same_thread=False`). Set -> `create_engine(normalized_url, pool_pre_ping=True)` (use the 1.3 normalizer); schema via `Base.metadata.create_all`/`drop_all` per test as today. Keep the `get_db` override and `clean_db` fixture. For Postgres, truncate-or-drop between tests must not leave state behind (verify with `-p no:randomly` and again in random order if `pytest-randomly` is added).
 - Add pytest settings (the empty `pyproject.toml` is the place): `[tool.pytest.ini_options] testpaths = ["tests"]`, `addopts = "-ra --strict-markers"`, and a `postgres` marker for tests that only make sense there (`test_migrations.py`, the concurrency test from 1.8 if scripted).
-- **No silent skips in CI:** `postgres`-marked tests skip locally when `TEST_DATABASE_URL` isn't Postgres, but when env `CI=true` a `conftest.py` hook (or `pytest_collection_modifyitems`) turns that skip into a failure. Otherwise a misconfigured service container would make CI green while testing nothing.
+- **No silent skips in CI:** `postgres`-marked tests skip locally when `TEST_DATABASE_URL` isn't Postgres. A job that must run them sets `REQUIRE_POSTGRES_TESTS=1`, and then a missing server aborts the run with an error instead of skipping (`conftest.py`'s `pytest_collection_modifyitems`). The SQLite job instead runs `pytest -m "not postgres"`. Also: `conftest.py` refuses a `TEST_DATABASE_URL` whose database name doesn't contain `test`, since every test drops and recreates all tables.
 - Run locally against the Docker Postgres from 1.7: `TEST_DATABASE_URL=postgresql://postgres:pw@localhost:5433/budget .venv/bin/python -m pytest -q`. Fix real dialect differences these tests expose (e.g. `Numeric` rounding, case-sensitive `LIKE` in category search, date handling, ordering without `ORDER BY`) **in the app code**, not by weakening tests.
 
 **Done when:** the same 69+ tests (all 12 test files plus the new ones) pass on SQLite **and** on Postgres 16, locally.
@@ -154,7 +171,7 @@ Today [conftest.py](backend/tests/conftest.py) hard-codes an in-memory SQLite en
 ### 1.11 [AGENT] Frontend unit tests (the frontend currently has none)
 There are no frontend tests today (`package.json` has only `lint`). Add a small, low-maintenance Vitest setup so CI has something real to gate on:
 - Dev deps: `vitest` (pinned; works with the existing Vite 5 config). Scripts: `"test": "vitest run"`, `"typecheck": "tsc --noEmit"`.
-- Unit tests for the pure, logic-heavy modules that the new budget/income features depend on: `src/features/dashboard/metrics.ts`, `src/features/budgets/projection.ts`, `src/lib/incomeProjections.ts`, `src/lib/format.ts`, and the `VITE_API_URL` guard in `src/lib/api.ts` (production without the var throws; dev falls back to localhost). Cover edge cases: zero income, semimonthly (24/yr), leap-year/month-end dates, empty data.
+- Unit tests for the pure, logic-heavy modules that the new budget/income features depend on: `src/features/dashboard/metrics.ts`, `src/features/budgets/projection.ts`, `src/lib/incomeProjections.ts`, `src/lib/format.ts`, and the `VITE_API_URL` guard (`resolveApiBaseUrl` in `src/lib/api.ts`; implemented and tested in 1.12 together with the Vite config check). Cover edge cases: zero income, semimonthly (24/yr), leap-year/month-end dates, empty data.
 - No component/E2E tests in this pass (keep it cheap); say so in the README.
 
 **Done when:** `npm run lint && npm run typecheck && npm test && npm run build` all pass locally.
@@ -184,13 +201,13 @@ There are no frontend tests today (`package.json` has only `lint`). Add a small,
   ```
   Free instances have no pre-deploy command, so migrations run in the start command: safe with exactly one instance; never scale past 1 without moving migrations to a separate step. One worker fits the 512 MB free instance.
 - **`frontend/vercel.json`**: `{ "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }`.
-- **`frontend/src/lib/api.ts`**: in production builds (`import.meta.env.PROD`) throw if `VITE_API_URL` is unset; keep the localhost fallback for dev only; remove the per-request `console.warn`.
+- **`frontend/src/lib/api.ts`**: `resolveApiBaseUrl()` throws in production builds when `VITE_API_URL` is unset (dev falls back to localhost); `vite.config.ts` also fails `npm run build` in production mode without it. Remove the per-request `console.warn`.
 - **`frontend/src/main.tsx`**: load `ReactQueryDevtools` only when `import.meta.env.DEV` (lazy import).
 - **`frontend/.env.example`** (`VITE_API_URL=http://localhost:8000`) and **`backend/.env.example`** (all `BUDGET_APP_*` with dummy values). Confirm `git check-ignore backend/.env frontend/.env`.
 - **`.gitignore`** (root and `backend/`): ignore `sql_app.db*`, `*.db`, `*.bak*`, `.env*` except `*.example`. Verify the `.bak-before-income-migration` file can't be added.
 - **`.github/workflows/ci.yml`**: triggers `pull_request` (all branches into `main`) and `push` to `main`; `concurrency` group per ref with cancel-in-progress; top-level `permissions: contents: read`. **Every test in the repo runs here**, as four jobs:
-  1. `backend-sqlite`: Python 3.12 with pip cache, `pip install -r requirements-dev.txt`, `pytest` (all of `backend/tests`, `TEST_DATABASE_URL` unset).
-  2. `backend-postgres`: same install, with a `postgres:16` service container (health-checked via `pg_isready`), `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/budget_test`, `CI=true`, then `pytest` (the **entire** suite again, now including the `postgres`-marked migration-drift test; skips are failures per 1.10), then `alembic upgrade head && alembic check` as an explicit extra gate.
+  1. `backend-sqlite`: Python 3.12 with pip cache, `pip install -r requirements-dev.txt`, `pytest -m "not postgres"` (all of `backend/tests` except the Postgres-only tests, `TEST_DATABASE_URL` unset).
+  2. `backend-postgres`: same install, with a `postgres:16` service container (health-checked via `pg_isready`), `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/budget_test`, `CI=true`, with `REQUIRE_POSTGRES_TESTS=1`, then `pytest` (the **entire** suite again, now including the `postgres`-marked migration-drift test; a missing server is an error per 1.10) (the migration test runs upgrade, check, downgrade, upgrade on a throwaway database).
   3. `frontend`: Node 20 with npm cache, `npm ci`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` with a dummy `VITE_API_URL=https://example.invalid`.
   4. `ci-ok`: `needs: [backend-sqlite, backend-postgres, frontend]`, `if: always()`, fails unless all three succeeded. This single aggregate job is the **only required status check** in branch protection (3.6), so job renames or additions never silently drop out of the gate.
   Use pinned major versions of actions (`actions/checkout@v4`, `actions/setup-python@v5`, `actions/setup-node@v4`), upload `pytest` JUnit XML and the frontend `dist` size as artifacts only on failure, and don't pass any deployment or provider secrets to these jobs (tests need none; all test credentials are throwaway values defined in the workflow). No deploy job: Render and Vercel deploy from Git.
@@ -294,10 +311,10 @@ Use two throwaway accounts, A and B:
 | `BUDGET_APP_CORS_ORIGINS` | Render (dashboard) | exact Vercel origin(s), comma-separated, no `*` |
 | `BUDGET_APP_TIMEZONE` | Render | `America/Toronto` (D5) |
 | `BUDGET_APP_ACCESS_TOKEN_EXPIRE_MINUTES` | Render | `60` |
-| `PYTHON_VERSION` | Render | `3.12.12` |
+| `PYTHON_VERSION` | Render | `3.12.12` (**verify** Render offers this exact patch version; if the build says it doesn't, use the nearest available 3.12.x) |
 | `VITE_API_URL` | Vercel (build-time) | Render URL, no trailing slash |
 | `TEST_DATABASE_URL` | CI (`backend-postgres` job) and local Postgres runs | the `postgres:16` service URL; unset = in-memory SQLite |
-| `CI` | GitHub Actions (set automatically) | `true`: turns skipped Postgres tests into failures |
+| `REQUIRE_POSTGRES_TESTS` | CI (`backend-postgres` job only) | `1`: a missing Postgres server is an error, not a skip |
 
 ## Go-live checklist
 

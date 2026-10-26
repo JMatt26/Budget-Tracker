@@ -1,8 +1,12 @@
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import clsx from "clsx";
 import { api } from "../../lib/api";
-import { Card } from "../../components/ui/Card";
+import { Card, CardHeader, Skeleton } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
+import { Segmented } from "../../components/ui/Segmented";
+import { Icon } from "../../components/ui/Icon";
+import { formatMoney, paletteColor, categoryColor } from "../../lib/format";
 
 
 type SummaryTotals = {
@@ -55,8 +59,16 @@ const fetchSummary = async (filters: Filters): Promise<SummaryResponse> => {
 const toNumber = (value: number | string | null | undefined): number =>
   Number(value ?? 0);
 
+const TYPE_OPTIONS: { value: "" | "income" | "expense" | "investment"; label: string }[] = [
+  { value: "", label: "All" },
+  { value: "income", label: "Income" },
+  { value: "expense", label: "Expense" },
+  { value: "investment", label: "Investment" },
+];
+
 export const ReportsPage: React.FC = () => {
   const [filters, setFilters] = useState<Filters>({});
+  const [exporting, setExporting] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["summary", filters],
@@ -87,25 +99,30 @@ export const ReportsPage: React.FC = () => {
       if (v) params[k] = v;
     });
 
-    const response = await api.get(
-      "/reports/transactions/export",
-      {
-        params,
-        responseType: "blob",
-      }
-    );
+    setExporting(true);
+    try {
+      const response = await api.get(
+        "/reports/transactions/export",
+        {
+          params,
+          responseType: "blob",
+        }
+      );
 
-    const blob = new Blob([response.data], {
-      type: "text/csv;charset=utf-8;",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "transactions.csv";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+      const blob = new Blob([response.data], {
+        type: "text/csv;charset=utf-8;",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "transactions.csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
   };
 
   const totals = data?.totals;
@@ -116,87 +133,82 @@ export const ReportsPage: React.FC = () => {
   const totalExpense = toNumber(totals?.total_expense);
   const net = toNumber(totals?.net);
 
-  return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-slate-100">
-          Reports
-        </h2>
-        <Button onClick={handleExportCsv}>
-          Export CSV
-        </Button>
-      </div>
+  const tiles = [
+    { label: "Income", value: totalIncome, color: "text-saved", dot: "bg-saved" },
+    { label: "Investments", value: totalInvestment, color: "text-invest", dot: "bg-invest" },
+    { label: "Expenses", value: totalExpense, color: "text-spend", dot: "bg-spend" },
+    { label: "Net", value: net, color: net >= 0 ? "text-saved" : "text-spend", dot: "bg-accent" },
+  ];
 
+  const maxCategoryValue = Math.max(
+    1,
+    ...byCategory.map((item) =>
+      Math.max(toNumber(item.total_income), toNumber(item.total_investment), toNumber(item.total_expense))
+    )
+  );
+  const hasFilters = Object.values(filters).some(Boolean);
+
+  return (
+    <div className="flex flex-col gap-5">
       {/* Filters */}
-      <Card>
-        <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">
-              Start date
-            </label>
+      <Card className="p-4 sm:p-5">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1.5 text-[13px] font-medium text-muted">
+            Start date
             <input
               type="date"
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+              className="field"
               value={filters.start_date ?? ""}
               onChange={handleFilterChange("start_date")}
             />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">
-              End date
-            </label>
+          </label>
+          <label className="flex flex-col gap-1.5 text-[13px] font-medium text-muted">
+            End date
             <input
               type="date"
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+              className="field"
               value={filters.end_date ?? ""}
               onChange={handleFilterChange("end_date")}
             />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">
-              Type
-            </label>
-            <select
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-              value={filters.type ?? ""}
-              onChange={handleFilterChange("type")}
-            >
-              <option value="">All</option>
-              <option value="income">Income</option>
-              <option value="expense">Expense</option>
-              <option value="investment">Investment</option>
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">
-              Min amount
-            </label>
+          </label>
+          <label className="flex w-28 flex-col gap-1.5 text-[13px] font-medium text-muted">
+            Min amount
             <input
               type="number"
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+              className="field"
+              placeholder="0.00"
               value={filters.min_amount ?? ""}
               onChange={handleFilterChange("min_amount")}
             />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">
-              Max amount
-            </label>
+          </label>
+          <label className="flex w-28 flex-col gap-1.5 text-[13px] font-medium text-muted">
+            Max amount
             <input
               type="number"
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+              className="field"
+              placeholder="Any"
               value={filters.max_amount ?? ""}
               onChange={handleFilterChange("max_amount")}
             />
+          </label>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[13px] font-medium text-muted">Type</span>
+            <Segmented
+              label="Type"
+              options={TYPE_OPTIONS}
+              value={filters.type ?? ""}
+              onChange={(value) => setFilters((prev) => ({ ...prev, type: value || undefined }))}
+            />
           </div>
-          <div className="flex items-end">
-            <Button
-              variant="ghost"
-              className="w-full"
-              onClick={handleClearFilters}
-            >
-              Clear
+          <div className="ml-auto flex gap-2">
+            {hasFilters && (
+              <Button variant="ghost" onClick={handleClearFilters}>
+                Clear
+              </Button>
+            )}
+            <Button variant="dark" onClick={handleExportCsv} disabled={exporting}>
+              <Icon name="download" size={16} />
+              {exporting ? "Exporting..." : "Export CSV"}
             </Button>
           </div>
         </div>
@@ -204,83 +216,84 @@ export const ReportsPage: React.FC = () => {
 
       {/* Totals */}
       {isLoading || !totals ? (
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card className="h-24 animate-pulse bg-slate-900/80" />
-          <Card className="h-24 animate-pulse bg-slate-900/80" />
-          <Card className="h-24 animate-pulse bg-slate-900/80" />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Skeleton className="h-24" />
+          <Skeleton className="h-24" />
+          <Skeleton className="h-24" />
+          <Skeleton className="h-24" />
         </div>
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-4">
-            <Card>
-              <p className="text-xs uppercase tracking-wide text-slate-400">
-                Income
-              </p>
-              <p className="mt-2 text-2xl font-semibold text-emerald-400">
-                ${totalIncome.toFixed(2)}
-              </p>
-            </Card>
-            <Card>
-              <p className="text-xs uppercase tracking-wide text-slate-400">
-                Investments
-              </p>
-              <p className="mt-2 text-2xl font-semibold text-blue-400">
-                ${totalInvestment.toFixed(2)}
-              </p>
-            </Card>
-            <Card>
-              <p className="text-xs uppercase tracking-wide text-slate-400">
-                Expenses
-              </p>
-              <p className="mt-2 text-2xl font-semibold text-rose-400">
-                ${totalExpense.toFixed(2)}
-              </p>
-            </Card>
-            <Card>
-              <p className="text-xs uppercase tracking-wide text-slate-400">
-                Net
-              </p>
-              <p
-                className={`mt-2 text-2xl font-semibold ${
-                  net >= 0 ? "text-emerald-400" : "text-rose-400"
-                }`}
-              >
-                ${net.toFixed(2)}
-              </p>
-            </Card>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            {tiles.map((t) => (
+              <Card key={t.label} className="p-4 sm:p-5">
+                <p className="flex items-center gap-2 text-[13px] font-medium text-muted">
+                  <span className={clsx("h-2 w-2 rounded-full", t.dot)} />
+                  {t.label}
+                </p>
+                <p className={clsx("mt-2 text-2xl font-semibold tracking-tight", t.color)}>
+                  {formatMoney(t.value)}
+                </p>
+              </Card>
+            ))}
           </div>
 
           {/* By category */}
           {byCategory && byCategory.length > 0 && (
             <Card>
-              <h3 className="mb-3 text-sm font-medium text-slate-100">
-                By category
-              </h3>
-              <div className="space-y-2 text-sm">
-                {byCategory.map((item) => {
-                  const income = toNumber(item.total_income);
-                  const investment = toNumber(item.total_investment);
-                  const expense = toNumber(item.total_expense);
-                  return (
-                    <div
-                      key={
-                        item.category_id ?? item.category_name ?? Math.random()
-                      }
-                      className="flex items-center justify-between"
-                    >
-                      <span>
-                        {item.category_name ?? "Uncategorized"}
-                      </span>
-                      <span className="text-slate-300">
-                        +${income.toFixed(2)}
-                        {" "}
-                        +${investment.toFixed(2)}
-                        {" "}
-                        / -${expense.toFixed(2)}
-                      </span>
-                    </div>
-                  );
-                })}
+              <CardHeader title="By category" subtitle="Money in, invested and spent in the selected range" />
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-muted">
+                      <th className="py-3 font-medium">Category</th>
+                      <th className="py-3 text-right font-medium">Income</th>
+                      <th className="py-3 text-right font-medium">Invested</th>
+                      <th className="py-3 text-right font-medium">Spent</th>
+                      <th className="w-[28%] py-3 pl-6 font-medium">Spending</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {byCategory.map((item, i) => {
+                      const income = toNumber(item.total_income);
+                      const investment = toNumber(item.total_investment);
+                      const expense = toNumber(item.total_expense);
+                      const color =
+                        item.category_id != null
+                          ? categoryColor({ id: item.category_id, color: null })
+                          : paletteColor(i);
+                      return (
+                        <tr
+                          key={
+                            item.category_id ?? item.category_name ?? Math.random()
+                          }
+                          className="border-t border-line-soft"
+                        >
+                          <td className="py-3">
+                            <span className="inline-flex items-center gap-2.5 text-ink">
+                              <span className="h-2.5 w-2.5 rounded-[3px]" style={{ backgroundColor: color }} />
+                              {item.category_name ?? "Uncategorized"}
+                            </span>
+                          </td>
+                          <td className="py-3 text-right text-saved">+{formatMoney(income)}</td>
+                          <td className="py-3 text-right text-invest">+{formatMoney(investment)}</td>
+                          <td className="py-3 text-right font-medium text-ink">−{formatMoney(expense)}</td>
+                          <td className="py-3 pl-6">
+                            <div className="h-2 w-full overflow-hidden rounded-full bg-line-soft">
+                              <div
+                                className="h-full rounded-full"
+                                style={{
+                                  width: `${(expense / maxCategoryValue) * 100}%`,
+                                  backgroundColor: color,
+                                }}
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </Card>
           )}

@@ -4,5 +4,18 @@
 
 /* basic body styling */
 body {
-  @apply bg-slate-950 text-slate-50;
+  @apply bg-canvas font-sans text-ink antialiased;
+  font-variant-numeric: tabular-nums;
+}
+
+@layer components {
+  .field {
+    @apply w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-muted/70 transition focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20;
+  }
+  .field-sm {
+    @apply rounded-lg border border-line bg-surface px-2.5 py-1.5 text-sm text-ink transition focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20;
+  }
+  .card-hover {
+    @apply transition duration-200 hover:-translate-y-0.5 hover:shadow-lift;
+  }
 }

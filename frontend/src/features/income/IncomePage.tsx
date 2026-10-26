@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Card } from "../../components/ui/Card";
+import clsx from "clsx";
+import { Card, CardHeader, Skeleton } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
+import { FormError } from "../../components/ui/Field";
+import { Icon } from "../../components/ui/Icon";
 import { fetchIncome, upsertIncome } from "../../lib/income-api";
 import type { Income, IncomeFrequency } from "../../lib/types";
 import { IncomeProjections } from "./IncomeProjections";
@@ -72,63 +75,68 @@ export const IncomePage: React.FC = () => {
       : income ?? null;
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-slate-100">Income</h2>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <h3 className="mb-4 text-sm font-medium text-slate-100">
-            Your current income
-          </h3>
-          {isLoading ? (
-            <div className="h-24 animate-pulse rounded-lg bg-slate-800/60" />
-          ) : (
-            <form className="space-y-4" onSubmit={handleSubmit}>
-              <div>
-                <label className="mb-1 block text-xs text-slate-400">
-                  Amount
-                </label>
+    <div className="grid items-start gap-5 md:grid-cols-2">
+      <Card>
+        <CardHeader title="Your current income" subtitle="How much each paycheck is, and how often it arrives" />
+        {isLoading ? (
+          <Skeleton className="h-48" />
+        ) : (
+          <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[13px] font-medium text-muted">Amount</span>
+              <span className="flex min-h-[60px] items-center gap-1 rounded-2xl border border-line px-4 text-2xl font-semibold text-ink transition focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20">
+                $
                 <input
                   type="number"
                   step="0.01"
                   min="0"
+                  inputMode="decimal"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+                  className="min-w-0 flex-1 border-0 bg-transparent p-0 text-2xl font-semibold text-ink placeholder:text-line focus:outline-none focus:ring-0"
                   placeholder="0.00"
                 />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-slate-400">
-                  Frequency
-                </label>
-                <select
-                  value={frequency}
-                  onChange={(e) =>
-                    setFrequency(e.target.value as IncomeFrequency)
-                  }
-                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-                >
-                  {FREQUENCY_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
+              </span>
+            </label>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[13px] font-medium text-muted">Frequency</span>
+              <div role="group" aria-label="Frequency" className="grid grid-cols-2 gap-2">
+                {FREQUENCY_OPTIONS.map((opt) => {
+                  const active = frequency === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => setFrequency(opt.value)}
+                      className={clsx(
+                        "min-h-[48px] rounded-xl border-[1.5px] text-sm font-medium transition",
+                        active
+                          ? "border-accent bg-accent-soft/60 text-ink"
+                          : "border-line bg-surface text-ink hover:border-ink/25"
+                      )}
+                    >
                       {opt.label}
-                    </option>
-                  ))}
-                </select>
+                    </button>
+                  );
+                })}
               </div>
-              {error && <p className="text-sm text-red-400">{error}</p>}
-              {saved && (
-                <p className="text-sm text-emerald-400">Income saved.</p>
-              )}
-              <Button type="submit" disabled={mutation.isPending}>
-                {mutation.isPending ? "Saving..." : "Save income"}
-              </Button>
-            </form>
-          )}
-        </Card>
+            </div>
+            {error && <FormError>{error}</FormError>}
+            {saved && (
+              <p className="flex items-center gap-1.5 text-sm font-medium text-saved">
+                <Icon name="check" size={16} strokeWidth={2.4} />
+                Income saved.
+              </p>
+            )}
+            <Button type="submit" size="lg" disabled={mutation.isPending}>
+              {mutation.isPending ? "Saving..." : "Save income"}
+            </Button>
+          </form>
+        )}
+      </Card>
 
-        <IncomeProjections income={previewIncome} />
-      </div>
+      <IncomeProjections income={previewIncome} title="What that adds up to" />
     </div>
   );
 };

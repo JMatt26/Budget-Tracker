@@ -1,16 +1,22 @@
 import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
+import clsx from "clsx";
 import { api } from "../../lib/api";
-import { Card } from "../../components/ui/Card";
-import { Button } from "../../components/ui/Button";
-import type { Budget, BudgetStatus } from "../../lib/types";
+import { Card, Skeleton } from "../../components/ui/Card";
+import { Button, IconButton } from "../../components/ui/Button";
+import { Modal } from "../../components/ui/Modal";
+import { Field, FormActions, FormError } from "../../components/ui/Field";
+import { Segmented } from "../../components/ui/Segmented";
+import { Icon } from "../../components/ui/Icon";
+import { ProgressBar, budgetTone, TONE_TEXT } from "../../components/ui/Progress";
+import type { Budget } from "../../lib/types";
 import { fetchBudgets, fetchBudgetStatus } from "../../lib/budget-api";
+import { describeBudgetPeriod, formatMoney } from "../../lib/format";
 
 const BudgetStatusCard = ({ budget }: { budget: Budget }) => {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  
+
   const { data, isLoading } = useQuery({
     queryKey: ["budget-status", budget.id],
     queryFn: () => fetchBudgetStatus(budget.id),
@@ -34,99 +40,109 @@ const BudgetStatusCard = ({ budget }: { budget: Budget }) => {
   });
 
   const limit = Number(budget.limit ?? 0);
-  const spent = data?.total_expense ?? 0;
-  const remaining = data?.remaining ?? 0;
+  const spent = Number(data?.total_expense ?? 0);
+  const remaining = Number(data?.remaining ?? 0);
   const exceeded = data?.exceeded ?? false;
-  const progress =
-    limit > 0 ? Math.min(100, (Number(spent) / Number(limit)) * 100) : 0;
+  const progress = limit > 0 ? (spent / limit) * 100 : 0;
+  const tone = exceeded ? "over" : budgetTone(spent, limit);
 
   return (
-    <Card 
-      className="space-y-3 cursor-pointer transition hover:border-sky-500/50 hover:bg-slate-900/80"
-      onClick={() => navigate(`/budgets/${budget.id}`)}
-    >
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-semibold text-slate-100">
+    <article className="card-hover relative flex flex-col gap-4 rounded-2xl border border-line bg-surface p-5 sm:p-6">
+      {/* Whole card links to the detail page; the delete button sits above it. */}
+      <Link
+        to={`/budgets/${budget.id}`}
+        aria-label={`Open ${budget.name}`}
+        className="absolute inset-0 rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      />
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-col items-start gap-1.5">
+          <h3 title={budget.name} className="max-w-full truncate text-base font-semibold text-ink">
             {budget.name}
           </h3>
+          <span className="rounded-md bg-line-soft px-2 py-0.5 text-xs font-medium text-muted">
+            {describeBudgetPeriod(budget.start_date, budget.end_date)}
+          </span>
           {budget.category && (
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-muted">
               Category: {budget.category.name}
             </p>
           )}
-          <p className="mt-1 text-xs text-slate-500">
-            Limit: ${limit.toFixed(2)}
-          </p>
         </div>
-        {isLoading ? (
-          <span className="text-xs text-slate-400">
-            Calculating...
-          </span>
-        ) : (
-          <div className="text-right">
-            <p className="text-xs text-slate-400">Spent</p>
-            <p className="text-sm font-semibold text-rose-300">
-              ${Number(spent).toFixed(2)}
-            </p>
-            <p className="mt-1 text-xs text-slate-400">
-              Remaining{" "}
-              <span
-                className={
-                  exceeded ? "text-rose-400" : "text-emerald-400"
-                }
-              >
-                $
-                {Number(remaining).toFixed(2)}
-              </span>
-            </p>
-          </div>
-        )}
+        <div className="-mr-2 -mt-1 flex items-center gap-1">
+          <IconButton
+            label={deleteBudgetMutation.isPending ? "Deleting..." : `Delete ${budget.name}`}
+            className="relative z-10 hover:bg-spend-soft hover:text-spend"
+            disabled={deleteBudgetMutation.isPending}
+            onClick={() => {
+              if (
+                window.confirm(
+                  `Are you sure you want to delete "${budget.name}"? This will remove the budget association from all transactions.`
+                )
+              ) {
+                deleteBudgetMutation.mutate(budget.id);
+              }
+            }}
+          >
+            <Icon name="trash" size={16} />
+          </IconButton>
+        </div>
       </div>
 
-      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
-        <div
-          className={`h-full rounded-full ${
-            exceeded ? "bg-rose-500" : "bg-emerald-500"
-          }`}
-          style={{ width: `${progress}%` }}
-        />
+      {isLoading ? (
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-9 w-32 rounded-lg" />
+          <span className="text-xs text-muted">Calculating...</span>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs text-muted">
+            {exceeded ? "Over budget by" : "Left to spend"}
+          </span>
+          <span
+            className={clsx(
+              "text-3xl font-semibold tracking-tight",
+              exceeded ? "text-spend" : "text-ink"
+            )}
+          >
+            {formatMoney(Math.abs(remaining))}
+          </span>
+        </div>
+      )}
+
+      <ProgressBar value={progress} tone={tone} />
+
+      <div className="flex justify-between text-[13px] text-muted">
+        <span>
+          {formatMoney(spent)} of {formatMoney(limit)} spent
+        </span>
+        <span className={clsx("font-medium", TONE_TEXT[tone])}>
+          {Math.round(progress)}%
+        </span>
       </div>
 
       {exceeded && (
-        <p className="text-xs text-rose-400">
+        <p className="-mt-2 text-xs text-spend">
           You've exceeded this budget.
         </p>
       )}
-
-      <div className="flex justify-end pt-2">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            if (
-              window.confirm(
-                `Are you sure you want to delete "${budget.name}"? This will remove the budget association from all transactions.`
-              )
-            ) {
-              deleteBudgetMutation.mutate(budget.id);
-            }
-          }}
-          className="text-xs text-rose-400 hover:text-rose-300 transition"
-          disabled={deleteBudgetMutation.isPending}
-        >
-          {deleteBudgetMutation.isPending ? "Deleting..." : "Delete"}
-        </button>
-      </div>
-    </Card>
+    </article>
   );
 };
+
+type BudgetPeriod = "monthly" | "weekly" | "specified";
+
+const PERIOD_OPTIONS: { value: BudgetPeriod; label: string }[] = [
+  { value: "monthly", label: "Monthly" },
+  { value: "weekly", label: "Weekly" },
+  { value: "specified", label: "Custom dates" },
+];
 
 const BudgetForm = ({ onClose }: { onClose: () => void }) => {
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState({
     name: "",
     limit: "",
-    period: "monthly" as "monthly" | "weekly" | "specified",
+    period: "monthly" as BudgetPeriod,
     startDate: "",
     endDate: "",
   });
@@ -243,131 +259,98 @@ const BudgetForm = ({ onClose }: { onClose: () => void }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <Card className="w-full max-w-md">
-        <h2 className="mb-4 text-lg font-semibold text-slate-100">
-          Create budget
-        </h2>
-        <form
-          className="space-y-4"
-          onSubmit={handleSubmit}
-        >
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">
-              Name
-            </label>
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, name: e.target.value }))
-              }
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-              placeholder="Budget name"
-              maxLength={100}
-            />
+    <Modal title="Create budget" onClose={onClose}>
+      <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+        <Field label="Name">
+          <input
+            type="text"
+            value={formData.name}
+            onChange={(e) =>
+              setFormData((prev) => ({ ...prev, name: e.target.value }))
+            }
+            className="field"
+            placeholder="Budget name"
+            maxLength={100}
+            autoFocus
+          />
+        </Field>
+        <Field label="Limit">
+          <input
+            type="number"
+            step="0.01"
+            value={formData.limit}
+            onChange={(e) =>
+              setFormData((prev) => ({ ...prev, limit: e.target.value }))
+            }
+            className="field"
+            placeholder="0.00"
+            min="0"
+          />
+        </Field>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[13px] font-medium text-muted">Period</span>
+          <Segmented
+            label="Period"
+            fullWidth
+            options={PERIOD_OPTIONS}
+            value={formData.period}
+            onChange={(period) => setFormData((prev) => ({ ...prev, period }))}
+          />
+        </div>
+        {formData.period === "specified" ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Start date">
+              <input
+                type="date"
+                value={formData.startDate}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    startDate: e.target.value,
+                  }))
+                }
+                className="field"
+              />
+            </Field>
+            <Field label="End date">
+              <input
+                type="date"
+                value={formData.endDate}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    endDate: e.target.value,
+                  }))
+                }
+                className="field"
+              />
+            </Field>
           </div>
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">
-              Limit
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              value={formData.limit}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, limit: e.target.value }))
-              }
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-              min="0"
-            />
+        ) : (
+          <div className="rounded-xl bg-canvas px-4 py-3 text-sm">
+            <p className="text-muted">
+              {formData.period === "monthly"
+                ? "This budget will cover the current month"
+                : "This budget will cover the current week"}
+            </p>
+            <p className="mt-1 font-medium text-ink">
+              {formData.startDate && formData.endDate
+                ? `${formatDateForDisplay(formData.startDate)} - ${formatDateForDisplay(formData.endDate)}`
+                : "Calculating dates..."}
+            </p>
           </div>
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">
-              Period
-            </label>
-            <select
-              value={formData.period}
-              onChange={(e) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  period: e.target.value as "monthly" | "weekly" | "specified",
-                }))
-              }
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-            >
-              <option value="monthly">Monthly</option>
-              <option value="weekly">Weekly</option>
-              <option value="specified">Specified Date</option>
-            </select>
-          </div>
-          {formData.period === "specified" ? (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-xs text-slate-400">
-                  Start date
-                </label>
-                <input
-                  type="date"
-                  value={formData.startDate}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      startDate: e.target.value,
-                    }))
-                  }
-                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-slate-400">
-                  End date
-                </label>
-                <input
-                  type="date"
-                  value={formData.endDate}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      endDate: e.target.value,
-                    }))
-                  }
-                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-                />
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-2 text-sm text-slate-400">
-              <p className="text-xs">
-                {formData.period === "monthly"
-                  ? "This budget will cover the current month"
-                  : "This budget will cover the current week"}
-              </p>
-              <p className="mt-1 text-xs">
-                {formData.startDate && formData.endDate
-                  ? `${formatDateForDisplay(formData.startDate)} - ${formatDateForDisplay(formData.endDate)}`
-                  : "Calculating dates..."}
-              </p>
-            </div>
-          )}
-          {error && (
-            <p className="text-sm text-red-400">{error}</p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={onClose}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? "Creating..." : "Create"}
-            </Button>
-          </div>
-        </form>
-      </Card>
-    </div>
+        )}
+        {error && <FormError>{error}</FormError>}
+        <FormActions>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={mutation.isPending}>
+            {mutation.isPending ? "Creating..." : "Create"}
+          </Button>
+        </FormActions>
+      </form>
+    </Modal>
   );
 };
 
@@ -380,33 +363,45 @@ export const BudgetsPage: React.FC = () => {
   });
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-slate-100">
-          Budgets
-        </h2>
-        <Button onClick={() => setShowCreateModal(true)}>
-          + New budget
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[13px] text-muted">
+          {data ? `${data.items.length} ${data.items.length === 1 ? "budget" : "budgets"}` : ""}
+        </p>
+        <Button variant="dark" onClick={() => setShowCreateModal(true)}>
+          <Icon name="plus" size={16} strokeWidth={2.2} />
+          New budget
         </Button>
       </div>
 
       {isLoading || !data ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <Card className="h-32 animate-pulse bg-slate-900/80" />
-          <Card className="h-32 animate-pulse bg-slate-900/80" />
-          <Card className="h-32 animate-pulse bg-slate-900/80" />
+          <Skeleton className="h-56" />
+          <Skeleton className="h-56" />
+          <Skeleton className="h-56" />
         </div>
       ) : data.items.length === 0 ? (
-        <Card>
-          <p className="text-sm text-slate-400">
+        <Card className="py-12 text-center">
+          <p className="text-sm text-muted">
             You don’t have any budgets yet.
           </p>
         </Card>
-      ) : (
+      ) : null}
+
+      {data && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {data.items.map((budget) => (
             <BudgetStatusCard key={budget.id} budget={budget} />
           ))}
+          <button
+            type="button"
+            onClick={() => setShowCreateModal(true)}
+            className="flex min-h-[220px] flex-col items-center justify-center gap-2 rounded-2xl border-[1.5px] border-dashed border-[#C9CED6] text-sm font-medium text-muted transition hover:border-accent hover:text-accent"
+          >
+            <Icon name="plus" size={22} strokeWidth={2} />
+            New budget
+            <span className="text-xs font-normal">Monthly, weekly or custom dates</span>
+          </button>
         </div>
       )}
       {showCreateModal && (

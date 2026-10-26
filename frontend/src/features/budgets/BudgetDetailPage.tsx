@@ -16,15 +16,33 @@ import {
   TypeBadge,
   budgetTone,
 } from "../../components/ui/Progress";
-import { fetchBudget, fetchBudgetStatus, fetchExpenseBreakdown } from "../../lib/budget-api";
+import {
+  fetchBudget,
+  fetchBudgetStatus,
+  fetchBudgetTargets,
+  fetchExpenseBreakdown,
+  updateBudgetTargets,
+  type BudgetTargets,
+} from "../../lib/budget-api";
 import {
   CategoryLimitsCard,
   ExpenseBreakdownCard,
+  MetricTargetCard,
+  MetricTiles,
   SpendingTimelineCard,
   toBreakdownRows,
   type LimitRow,
+  type MetricPoint,
+  type MetricTile,
   type TimelinePoint,
 } from "./BudgetCharts";
+import {
+  TARGET_METRICS,
+  buildDailySeries,
+  shortDayLabel,
+  splitActualProjected,
+  type TargetMetric,
+} from "./projection";
 import { api } from "../../lib/api";
 import { categoryColor, formatMoney, formatSignedMoney, TYPE_META } from "../../lib/format";
 import { PAYMENT_METHODS } from "../../lib/types";
@@ -461,12 +479,20 @@ const BudgetTransactionForm = ({
   );
 };
 
-type TabKey = "numeric" | "graphs" | "charts";
+type TabKey = "numeric" | "targets" | "graphs" | "charts";
 
 const tabLabels: Record<TabKey, string> = {
   numeric: "Overview",
+  targets: "Targets",
   graphs: "Graphs",
   charts: "Charts",
+};
+
+// The targets endpoint returns decimals as strings; null means no target.
+const targetValue = (targets: BudgetTargets | undefined, metric: TargetMetric): number | null => {
+  const key = metric === "spent" ? "spending" : metric;
+  const raw = targets?.[key];
+  return raw == null ? null : Number(raw);
 };
 
 export const BudgetDetailPage: React.FC = () => {
@@ -484,6 +510,8 @@ export const BudgetDetailPage: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [periodView, setPeriodView] = useState<"monthly" | "weekly">("monthly");
   const [weekIndex, setWeekIndex] = useState<number | null>(null);
+  const [graphMetric, setGraphMetric] = useState<TargetMetric>("spent");
+  const [showTargetsForm, setShowTargetsForm] = useState(false);
 
   const { data: budget, isLoading: budgetLoading } = useQuery({
     queryKey: ["budget", budgetId],
@@ -975,40 +1003,106 @@ export const BudgetDetailPage: React.FC = () => {
       .sort((a, b) => b.spent / (b.limit || 1) - a.spent / (a.limit || 1));
   }, [budget, periodCategories, selectedWeek]);
 
-  const timelinePoints = useMemo<TimelinePoint[]>(() => {
+  // Share of the whole budget the selected period covers, used to prorate
+  // whole-budget targets down to a week.
+  const periodShare = useMemo(() => {
+    if (!budget || !selectedWeek) return 1;
+    const days = (a: string, b: string) =>
+      Math.round((new Date(`${b}T00:00:00`).getTime() - new Date(`${a}T00:00:00`).getTime()) / 86_400_000) + 1;
+    const total = days(budget.start_date.slice(0, 10), budget.end_date.slice(0, 10));
+    return total > 0 ? days(selectedWeek.start, selectedWeek.end) / total : 1;
+  }, [budget, selectedWeek]);
+
+  const { data: targets } = useQuery({
+    queryKey: ["budget-targets", budgetId],
+    queryFn: () => fetchBudgetTargets(budgetId),
+    enabled: !Number.isNaN(budgetId),
+  });
+
+  // Targets are for the whole budget, so the Targets tab always compares
+  // against the full period regardless of the weekly toggle.
+  const { data: monthlyStatus } = useQuery({
+    queryKey: ["budget-status", budgetId, null, null],
+    queryFn: () => fetchBudgetStatus(budgetId),
+    enabled: !Number.isNaN(budgetId) && activeTab === "targets",
+  });
+
+  const periodSeries = useMemo(() => {
     const startStr = status?.period_start ?? budget?.start_date.slice(0, 10);
     const endStr = status?.period_end ?? budget?.end_date.slice(0, 10);
-    if (!startStr || !endStr) return [];
+    if (!startStr || !endStr) return null;
+    return buildDailySeries(
+      budgetTransactions?.items ?? [],
+      startStr,
+      endStr,
+      Number(status?.period_limit ?? 0)
+    );
+  }, [status, budget, budgetTransactions]);
 
-    const spentByDay: Record<string, number> = {};
-    const investedByDay: Record<string, number> = {};
-    for (const tx of budgetTransactions?.items ?? []) {
-      const day = tx.date.slice(0, 10);
-      if (day < startStr || day > endStr) continue;
-      if (tx.type === "expense") spentByDay[day] = (spentByDay[day] ?? 0) + Number(tx.amount);
-      if (tx.type === "investment") investedByDay[day] = (investedByDay[day] ?? 0) + Number(tx.amount);
-    }
+  const monthlySeries = useMemo(() => {
+    if (!budget) return null;
+    return buildDailySeries(
+      budgetTransactions?.items ?? [],
+      budget.start_date.slice(0, 10),
+      budget.end_date.slice(0, 10),
+      Number(monthlyStatus?.period_limit ?? budget.limit ?? 0)
+    );
+  }, [budget, budgetTransactions, monthlyStatus]);
 
-    const days: string[] = [];
-    for (let d = new Date(`${startStr}T00:00:00`); formatLocalDate(d) <= endStr; d.setDate(d.getDate() + 1)) {
-      days.push(formatLocalDate(d));
-    }
-
+  const timelinePoints = useMemo<TimelinePoint[]>(() => {
+    if (!periodSeries) return [];
     const periodLimit = Number(status?.period_limit ?? 0);
-    let spent = 0;
-    let invested = 0;
-    return days.map((day, i) => {
-      spent += spentByDay[day] ?? 0;
-      invested += investedByDay[day] ?? 0;
+    const n = periodSeries.days.length;
+    return periodSeries.days.map((day, i) => {
+      const spent = splitActualProjected(periodSeries, "spent", i);
+      const invested = splitActualProjected(periodSeries, "invested", i);
       return {
         date: day,
-        label: new Date(`${day}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
-        spent: Math.round(spent * 100) / 100,
-        invested: Math.round(invested * 100) / 100,
-        pace: Math.round(((periodLimit * (i + 1)) / days.length) * 100) / 100,
+        label: shortDayLabel(day),
+        spent: spent.actual,
+        invested: invested.actual,
+        spentProjected: spent.projected,
+        investedProjected: invested.projected,
+        pace: Math.round(((periodLimit * (i + 1)) / n) * 100) / 100,
       };
     });
-  }, [status, budget, budgetTransactions]);
+  }, [periodSeries, status]);
+
+  const lastIndex = (periodSeries?.days.length ?? 0) - 1;
+  const currentIndex = periodSeries ? Math.min(periodSeries.todayIndex, lastIndex) : -1;
+
+  const metricTiles = useMemo<MetricTile[]>(
+    () =>
+      TARGET_METRICS.map((m) => {
+        const target = targetValue(targets, m.key);
+        const values = periodSeries?.values[m.key] ?? [];
+        return {
+          key: m.key,
+          label: m.label,
+          color: m.color,
+          actual: currentIndex >= 0 ? values[currentIndex] ?? 0 : 0,
+          projected: values[lastIndex] ?? 0,
+          target: target == null ? null : target * periodShare,
+        };
+      }),
+    [targets, periodSeries, currentIndex, lastIndex, periodShare]
+  );
+
+  const metricPoints = useMemo<MetricPoint[]>(() => {
+    if (!periodSeries) return [];
+    const target = targetValue(targets, graphMetric);
+    const periodTarget = target == null ? null : target * periodShare;
+    const n = periodSeries.days.length;
+    return periodSeries.days.map((day, i) => ({
+      date: day,
+      label: shortDayLabel(day),
+      ...splitActualProjected(periodSeries, graphMetric, i),
+      target: periodTarget == null ? null : Math.round(((periodTarget * (i + 1)) / n) * 100) / 100,
+    }));
+  }, [periodSeries, targets, graphMetric, periodShare]);
+
+  const selectedMetric = TARGET_METRICS.find((m) => m.key === graphMetric)!;
+  const selectedTile = metricTiles.find((t) => t.key === graphMetric);
 
   const graphsContent = (
     <div className="flex flex-col gap-5">
@@ -1018,8 +1112,128 @@ export const BudgetDetailPage: React.FC = () => {
         subtitle={`Running total, ${periodLabel}`}
         points={timelinePoints}
       />
+      <MetricTiles
+        tiles={metricTiles}
+        selected={graphMetric}
+        onSelect={(key) => setGraphMetric(key as TargetMetric)}
+      />
+      <MetricTargetCard
+        key={graphMetric}
+        points={metricPoints}
+        label={selectedMetric.label}
+        color={selectedMetric.color}
+        target={selectedTile?.target ?? null}
+        subtitle={`Running total, ${periodLabel}${selectedWeek ? " · target shown as this week's share" : ""}`}
+      />
     </div>
   );
+
+  const renderTargets = () => {
+    const current: Record<TargetMetric, number> = {
+      spent: Number(monthlyStatus?.total_expense ?? 0),
+      invested: Number(monthlyStatus?.total_investment ?? 0),
+      saved:
+        Number(monthlyStatus?.total_income ?? 0) -
+        Number(monthlyStatus?.total_expense ?? 0) -
+        Number(monthlyStatus?.total_investment ?? 0),
+    };
+    const monthlyLast = (monthlySeries?.days.length ?? 0) - 1;
+    const periodOver = !!monthlySeries && monthlySeries.todayIndex >= monthlyLast;
+
+    return (
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted">
+            Current totals vs your goals for {budget ? `${formatDate(budget.start_date)} – ${formatDate(budget.end_date)}` : "this budget"}.
+          </p>
+          <Button variant="secondary" size="sm" onClick={() => setShowTargetsForm(true)}>
+            <Icon name="edit" size={15} />
+            Edit targets
+          </Button>
+        </div>
+        <div className="grid gap-5 lg:grid-cols-3">
+          {TARGET_METRICS.map((m) => {
+            const target = targetValue(targets, m.key);
+            const actual = current[m.key];
+            const projected = monthlySeries?.values[m.key][monthlyLast] ?? actual;
+            const pct = target && target > 0 ? (actual / target) * 100 : 0;
+            const tone = m.kind === "ceiling" && target != null ? budgetTone(actual, target) : "ok";
+            const diff = target == null ? 0 : target - actual;
+            const statusText =
+              target == null
+                ? "No target set"
+                : m.kind === "ceiling"
+                ? diff < 0
+                  ? `Over target by ${formatCurrency(-diff)}`
+                  : `${formatCurrency(diff)} left under target`
+                : diff <= 0
+                ? "Goal reached"
+                : `${formatCurrency(diff)} to go`;
+            const projectedOff =
+              target != null &&
+              (m.kind === "ceiling" ? projected > target : projected < target);
+
+            return (
+              <Card key={m.key} className="flex flex-col gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: m.color }} />
+                  <h3 className="text-sm font-semibold text-ink">{m.label}</h3>
+                  <span className="ml-auto text-xs text-muted">
+                    {m.kind === "ceiling" ? "Spend at most" : "Reach at least"}
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-semibold tracking-tight text-ink">
+                    {formatCurrency(actual)}
+                  </span>
+                  <span className="text-sm text-muted">
+                    / {target == null ? "—" : formatCurrency(target)}
+                  </span>
+                </div>
+                {target != null ? (
+                  <>
+                    <ProgressBar
+                      value={pct}
+                      tone={tone}
+                      barClassName={
+                        m.key === "invested" ? "bg-invest" : m.key === "saved" ? "bg-saved" : undefined
+                      }
+                    />
+                    <div className="flex flex-col gap-1 text-xs">
+                      <span
+                        className={clsx(
+                          m.kind === "ceiling"
+                            ? TONE_TEXT[tone]
+                            : diff <= 0
+                            ? "text-saved"
+                            : "text-muted"
+                        )}
+                      >
+                        {statusText} · {Math.round(pct)}%
+                      </span>
+                      {!periodOver && (
+                        <span className={projectedOff ? "text-warn" : "text-muted"}>
+                          On pace for {formatCurrency(projected)} by {formatDate(budget?.end_date)}
+                        </span>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowTargetsForm(true)}
+                    className="self-start text-sm font-medium text-accent hover:text-accent-hover"
+                  >
+                    Set a {m.label.toLowerCase()} target
+                  </button>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   const chartsContent = (
     <div className="flex flex-col gap-5">
@@ -1111,6 +1325,7 @@ export const BudgetDetailPage: React.FC = () => {
       ) : (
         <div key={activeTab} className="animate-rise">
           {activeTab === "numeric" && renderNumeric()}
+          {activeTab === "targets" && renderTargets()}
           {activeTab === "graphs" && graphsContent}
           {activeTab === "charts" && chartsContent}
         </div>
@@ -1136,6 +1351,14 @@ export const BudgetDetailPage: React.FC = () => {
           budgetId={budgetId}
           budgetCategoryId={selectedCategoryId}
           onClose={() => setSelectedCategoryId(null)}
+        />
+      )}
+
+      {showTargetsForm && (
+        <EditTargetsForm
+          budgetId={budgetId}
+          targets={targets}
+          onClose={() => setShowTargetsForm(false)}
         />
       )}
 
@@ -1265,6 +1488,92 @@ const EditBudgetForm = ({
           </Button>
           <Button type="submit" disabled={mutation.isPending}>
             {mutation.isPending ? "Saving..." : "Save changes"}
+          </Button>
+        </FormActions>
+      </form>
+    </Modal>
+  );
+};
+
+const EditTargetsForm = ({
+  budgetId,
+  targets,
+  onClose,
+}: {
+  budgetId: number;
+  targets: BudgetTargets | undefined;
+  onClose: () => void;
+}) => {
+  const queryClient = useQueryClient();
+  const initial = (metric: TargetMetric) => {
+    const value = targetValue(targets, metric);
+    return value == null ? "" : String(value);
+  };
+  const [values, setValues] = useState<Record<TargetMetric, string>>({
+    spent: initial("spent"),
+    invested: initial("invested"),
+    saved: initial("saved"),
+  });
+  const [error, setError] = useState<string | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: () => {
+      // A blank field clears that target.
+      const parse = (v: string) => (v.trim() === "" ? null : Number(v));
+      return updateBudgetTargets(budgetId, {
+        spending: parse(values.spent),
+        invested: parse(values.invested),
+        saved: parse(values.saved),
+      });
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(["budget-targets", budgetId], data);
+      onClose();
+    },
+    onError: (err: any) => {
+      setError(err.response?.data?.detail || "Failed to save targets");
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (Object.values(values).some((v) => v.trim() !== "" && !(Number(v) >= 0))) {
+      setError("Targets must be 0 or more");
+      return;
+    }
+    mutation.mutate();
+  };
+
+  return (
+    <Modal title="Edit targets" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        {TARGET_METRICS.map((m, i) => (
+          <Field
+            key={m.key}
+            label={m.kind === "ceiling" ? `${m.label} — spend at most` : `${m.label} — reach at least`}
+            hint={i === TARGET_METRICS.length - 1 ? "Goals cover the whole budget period. Leave blank for no target." : undefined}
+          >
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              inputMode="decimal"
+              value={values[m.key]}
+              onChange={(e) => setValues({ ...values, [m.key]: e.target.value })}
+              className="field"
+              placeholder="No target"
+              autoFocus={i === 0}
+            />
+          </Field>
+        ))}
+        {error && <FormError>{error}</FormError>}
+        <FormActions>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={mutation.isPending}>
+            {mutation.isPending ? "Saving..." : "Save targets"}
           </Button>
         </FormActions>
       </form>

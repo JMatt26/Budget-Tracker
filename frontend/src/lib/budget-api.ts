@@ -54,3 +54,30 @@ export const fetchExpenseBreakdown = async (
   });
   return data;
 };
+
+// Goals for the whole budget period; null means no goal set.
+export type BudgetTargets = {
+  budget_id: number;
+  spending: number | string | null;
+  invested: number | string | null;
+  saved: number | string | null;
+};
+
+export type BudgetTargetsUpdate = {
+  spending?: number | null;
+  invested?: number | null;
+  saved?: number | null;
+};
+
+export const fetchBudgetTargets = async (id: number): Promise<BudgetTargets> => {
+  const { data } = await api.get<BudgetTargets>(`/budgets/${id}/targets`);
+  return data;
+};
+
+export const updateBudgetTargets = async (
+  id: number,
+  targets: BudgetTargetsUpdate
+): Promise<BudgetTargets> => {
+  const { data } = await api.put<BudgetTargets>(`/budgets/${id}/targets`, targets);
+  return data;
+};

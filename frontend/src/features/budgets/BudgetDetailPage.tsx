@@ -12,7 +12,7 @@ import { Icon } from "../../components/ui/Icon";
 import {
   CategoryAvatar,
   ProgressBar,
-  ProgressRing,
+  BreakdownRing,
   TONE_TEXT,
   TypeBadge,
   budgetTone,
@@ -629,7 +629,8 @@ export const BudgetDetailPage: React.FC = () => {
   const renderNumeric = () => {
     const totalExpense = Number(status?.total_expense ?? 0);
     const totalInvested = Number(status?.total_investment ?? 0);
-    const totalSaved = Number(status?.total_income ?? 0);
+    const totalEarned = Number(status?.total_income ?? 0);
+    const totalSaved = totalEarned - totalExpense - totalInvested;
     const remaining = Number(status?.remaining ?? 0);
     const limit = status
       ? Number(status.period_limit ?? 0)
@@ -647,7 +648,12 @@ export const BudgetDetailPage: React.FC = () => {
       { label: "Limit", value: formatCurrency(limit), color: "text-ink" },
       { label: "Spent", value: formatCurrency(totalExpense), color: "text-spend" },
       { label: "Invested", value: formatCurrency(totalInvested), color: "text-invest" },
-      { label: "Saved", value: formatCurrency(totalSaved), color: "text-saved" },
+      { label: "Earned", value: formatCurrency(totalEarned), color: "text-saved" },
+      {
+        label: "Saved",
+        value: formatCurrency(totalSaved),
+        color: totalSaved < 0 ? "text-spend" : "text-saved",
+      },
       {
         label: "Remaining",
         value: formatCurrency(remaining),
@@ -698,16 +704,19 @@ export const BudgetDetailPage: React.FC = () => {
         </div>
 
         <Card className="flex flex-wrap items-center gap-8 sm:p-7">
-          <ProgressRing
-            value={progress}
-            tone={tone}
-            label={`${Math.round(progress)} percent of the budget used`}
+          <BreakdownRing
+            label="Share of spent, invested and saved"
+            segments={[
+              { label: "Spent", value: totalExpense, color: "#C2410C" },
+              { label: "Invested", value: totalInvested, color: "#6741D9" },
+              { label: "Saved", value: totalSaved, color: "#0E7A6B" },
+            ]}
           />
-          <div className="grid min-w-[260px] flex-1 grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="grid min-w-[260px] flex-1 grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-6">
             {stats.map((s) => (
-              <div key={s.label} className="flex flex-col gap-1">
+              <div key={s.label} className="flex min-w-0 flex-col gap-1">
                 <span className="text-xs text-muted">{s.label}</span>
-                <span className={clsx("text-xl font-semibold tracking-tight", s.color)}>
+                <span className={clsx("truncate text-base font-semibold tracking-tight", s.color)}>
                   {s.value}
                 </span>
               </div>

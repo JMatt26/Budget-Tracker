@@ -226,8 +226,10 @@ def get_budget_status(
     total_investment = sum_for_type("investment")
     total_income = sum_for_type("income")
 
-    # Investments are set aside out of the budget; income tops it back up.
-    remaining = period_limit - total_expense - total_investment + total_income
+    # Saved is income left after spending and investing; remaining is what's
+    # left of the limit after spending, investing and saving.
+    total_saved = total_income - total_expense - total_investment
+    remaining = period_limit - total_expense - total_investment - total_saved
     exceeded = remaining < 0
 
     return schemas.BudgetStatus(

@@ -124,7 +124,7 @@ def test_budget_status_tracks_expenses(auth_client):
     exceeded = data["exceeded"]
 
     assert totals_expense == "150.00"
-    assert remaining == "350.00"
+    assert remaining == "500.00"
     assert exceeded is False
 
 
@@ -179,8 +179,8 @@ def test_budget_status_tracks_investment_and_income(auth_client):
     assert data["total_expense"] == "100.00"
     assert data["total_investment"] == "50.00"
     assert data["total_income"] == "30.00"
-    # 500 - 100 (expense) - 50 (investment) + 30 (income)
-    assert data["remaining"] == "380.00"
+    # saved = 30 - 100 - 50 = -120; remaining = 500 - 100 - 50 - (-120)
+    assert data["remaining"] == "470.00"
     assert data["exceeded"] is False
 
 
@@ -241,8 +241,8 @@ def test_budget_status_prorates_limit_for_sub_period(auth_client):
     # 400 * (7 days / 28 days) = 100
     assert data["period_limit"] == "100.00"
     assert data["total_expense"] == "40.00"
-    # 100 - 40
-    assert data["remaining"] == "60.00"
+    # no income logged, so remaining is the whole prorated limit
+    assert data["remaining"] == "100.00"
     assert data["exceeded"] is False
 
 

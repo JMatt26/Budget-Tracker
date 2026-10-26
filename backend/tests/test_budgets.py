@@ -1,11 +1,18 @@
 from datetime import date, timedelta
 
 
+def _set_monthly_income(client, amount):
+    resp = client.post(
+        "/income/", json={"name": "Job", "amount": amount, "frequency": "monthly"}
+    )
+    assert resp.status_code == 201, resp.text
+
+
 def test_create_budget(auth_client):
+    _set_monthly_income(auth_client, "1000.00")
     today = date.today()
     payload = {
         "name": "January Budget",
-        "limit": "1000.00",
         "start_date": today.isoformat(),
         "end_date": (today + timedelta(days=30)).isoformat(),
     }
@@ -23,7 +30,6 @@ def test_list_budgets(auth_client):
     today = date.today()
     payload = {
         "name": "Groceries Budget",
-        "limit": "400.00",
         "start_date": today.isoformat(),
         "end_date": (today + timedelta(days=30)).isoformat(),
     }
@@ -53,7 +59,6 @@ def test_get_budget_by_id(auth_client):
     today = date.today()
     payload = {
         "name": "Rent Budget",
-        "limit": "800.00",
         "start_date": today.isoformat(),
         "end_date": (today + timedelta(days=30)).isoformat(),
     }
@@ -70,13 +75,13 @@ def test_get_budget_by_id(auth_client):
 
 
 def test_budget_status_tracks_expenses(auth_client):
+    _set_monthly_income(auth_client, "500.00")
     today = date.today()
     end = today + timedelta(days=30)
 
     # 1. Create a budget
     budget_payload = {
         "name": "Food Budget",
-        "limit": "500.00",
         "start_date": today.isoformat(),
         "end_date": end.isoformat(),
     }
@@ -122,12 +127,12 @@ def test_budget_status_tracks_expenses(auth_client):
 
 
 def test_budget_status_tracks_investment_and_income(auth_client):
+    _set_monthly_income(auth_client, "500.00")
     today = date.today()
     end = today + timedelta(days=30)
 
     budget_payload = {
         "name": "Mixed Budget",
-        "limit": "500.00",
         "start_date": today.isoformat(),
         "end_date": end.isoformat(),
     }
@@ -177,6 +182,7 @@ def test_budget_status_tracks_investment_and_income(auth_client):
 
 
 def test_budget_status_prorates_limit_for_sub_period(auth_client):
+    _set_monthly_income(auth_client, "400.00")
     today = date.today()
     # A clean 28-day budget so a 7-day week is an exact quarter of it.
     start = today
@@ -184,7 +190,6 @@ def test_budget_status_prorates_limit_for_sub_period(auth_client):
 
     budget_payload = {
         "name": "Four Week Budget",
-        "limit": "400.00",
         "start_date": start.isoformat(),
         "end_date": end.isoformat(),
     }
@@ -240,7 +245,6 @@ def test_budget_status_rejects_sub_period_out_of_order(auth_client):
     today = date.today()
     budget_payload = {
         "name": "Order Check Budget",
-        "limit": "100.00",
         "start_date": today.isoformat(),
         "end_date": (today + timedelta(days=13)).isoformat(),
     }
@@ -255,3 +259,36 @@ def test_budget_status_rejects_sub_period_out_of_order(auth_client):
         },
     )
     assert resp.status_code == 400
+
+
+def test_budget_limit_is_total_monthly_income(auth_client):
+    # 1200/month + 100/week (= 433.33/month) + 24 * 50 per year (= 100/month)
+    for name, amount, freq in [
+        ("Job", "1200.00", "monthly"),
+        ("Side", "100.00", "weekly"),
+        ("Twice", "50.00", "semimonthly"),
+    ]:
+        resp = auth_client.post(
+            "/income/", json={"name": name, "amount": amount, "frequency": freq}
+        )
+        assert resp.status_code == 201, resp.text
+
+    today = date.today()
+    created = auth_client.post(
+        "/budgets/",
+        json={
+            "name": "Income Budget",
+            "start_date": today.isoformat(),
+            "end_date": (today + timedelta(days=29)).isoformat(),
+        },
+    )
+    assert created.status_code == 201, created.text
+    budget_id = created.json()["id"]
+    assert created.json()["limit"] == "1733.33"
+
+    # Follows income changes without touching the budget.
+    income_id = auth_client.get("/income/").json()[0]["id"]
+    auth_client.put(f"/income/{income_id}", json={"amount": "2200.00"})
+    assert auth_client.get(f"/budgets/{budget_id}").json()["limit"] == "2733.33"
+    assert auth_client.get("/budgets/").json()["items"][0]["limit"] == "2733.33"
+    assert auth_client.get(f"/budgets/{budget_id}/status").json()["period_limit"] == "2733.33"

@@ -144,7 +144,12 @@ export const IncomePage: React.FC = () => {
   // `undefined` = closed, `null` = adding a new source, Income = editing it.
   const [editing, setEditing] = useState<Income | null | undefined>(undefined);
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ["income"] });
+  // Budget limits are derived from income, so refresh them too.
+  const refresh = () => {
+    for (const key of ["income", "budgets", "budget", "budget-status"]) {
+      queryClient.invalidateQueries({ queryKey: [key] });
+    }
+  };
 
   const removeMutation = useMutation({
     mutationFn: deleteIncome,

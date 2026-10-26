@@ -1221,7 +1221,6 @@ const EditBudgetForm = ({
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState({
     name: budget.name,
-    limit: String(budget.limit),
     startDate: budget.start_date.slice(0, 10),
     endDate: budget.end_date.slice(0, 10),
   });
@@ -1232,9 +1231,6 @@ const EditBudgetForm = ({
       const payload: any = {};
       if (formData.name.trim() !== budget.name) {
         payload.name = formData.name.trim();
-      }
-      if (Number(formData.limit) !== Number(budget.limit)) {
-        payload.limit = Number(formData.limit);
       }
       if (formData.startDate !== budget.start_date.slice(0, 10)) {
         payload.start_date = formData.startDate;
@@ -1264,10 +1260,6 @@ const EditBudgetForm = ({
       setError("Name is required");
       return;
     }
-    if (!formData.limit || Number(formData.limit) <= 0) {
-      setError("Limit must be greater than 0");
-      return;
-    }
     if (!formData.startDate || !formData.endDate) {
       setError("Start and end dates are required");
       return;
@@ -1293,18 +1285,6 @@ const EditBudgetForm = ({
             className="field"
             placeholder="Budget name"
             maxLength={100}
-          />
-        </Field>
-        <Field label="Limit">
-          <input
-            type="number"
-            step="0.01"
-            value={formData.limit}
-            onChange={(e) =>
-              setFormData({ ...formData, limit: e.target.value })
-            }
-            className="field"
-            min="0"
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">

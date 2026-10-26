@@ -74,7 +74,7 @@ class Budget(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
-    limit = Column(Numeric(10, 2), nullable=False)
+    limit = Column(Numeric(10, 2), nullable=False, default=0)  # legacy; the effective limit is the user's monthly income
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
 

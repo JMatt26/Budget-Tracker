@@ -9,6 +9,8 @@ import logging
 from app.core.logging_config import configure_logging
 from app.core.config import Settings, get_settings
 from app.middleware.request_logging import RequestLoggingMiddleware
+from app.rate_limit import limiter, rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 
 from . import schemas
@@ -47,6 +49,9 @@ def create_app(settings: Settings) -> FastAPI:
     )
 
     app.add_middleware(RequestLoggingMiddleware)
+
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
     if settings.backend_cors_origins:
         app.add_middleware(

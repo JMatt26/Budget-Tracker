@@ -1,7 +1,7 @@
 # backend/app/routers/auth.py
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -13,12 +13,15 @@ from ..auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
 )
 from ..db import get_db
+from ..rate_limit import LOGIN_LIMIT, REGISTER_LIMIT, limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=schemas.UserRead, status_code=201)
+@limiter.limit(REGISTER_LIMIT)
 def register_user(
+    request: Request,
     user_in: schemas.UserCreate,
     db: Session = Depends(get_db),
 ):
@@ -43,7 +46,9 @@ def register_user(
 
 
 @router.post("/login", response_model=schemas.Token)
+@limiter.limit(LOGIN_LIMIT)
 def login_for_access_token(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):

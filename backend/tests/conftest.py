@@ -77,6 +77,19 @@ def todays_date_is_the_machines(monkeypatch):
     monkeypatch.setattr("app.budget_cycles.today_local", date.today)
 
 
+@pytest.fixture(autouse=True)
+def rate_limiting_is_off_by_default():
+    """Most tests register/login many users from one client IP; the dedicated
+    tests in test_rate_limit.py switch the limiter on."""
+    from app.rate_limit import limiter
+
+    limiter.enabled = False
+    limiter.reset()
+    yield
+    limiter.enabled = False
+    limiter.reset()
+
+
 @pytest.fixture()
 def client():
     return TestClient(app)

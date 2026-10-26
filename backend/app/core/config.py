@@ -47,6 +47,13 @@ class Settings:
             "on",
         )
 
+        # Brute-force / signup-spam protection on the auth endpoints (per IP)
+        self.rate_limit_enabled: bool = os.getenv(
+            "BUDGET_APP_RATE_LIMIT_ENABLED", "true"
+        ).strip().lower() in ("1", "true", "yes", "on")
+        self.login_rate_limit: str = os.getenv("BUDGET_APP_LOGIN_RATE_LIMIT", "10/minute")
+        self.register_rate_limit: str = os.getenv("BUDGET_APP_REGISTER_RATE_LIMIT", "5/minute")
+
         # The one timezone the app uses to decide what "today" is (e.g. when a
         # recurring budget's cycle has ended). Servers usually run in UTC.
         self.timezone: str = os.getenv("BUDGET_APP_TIMEZONE", "America/Toronto")

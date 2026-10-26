@@ -268,7 +268,7 @@ export const CategoriesPage: React.FC = () => {
           <input
             type="text"
             placeholder="Search categories..."
-            className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-ink placeholder:text-muted/70 focus:outline-none focus:ring-0"
+            className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-ink max-sm:text-base placeholder:text-muted/70 focus:outline-none focus:ring-0"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />

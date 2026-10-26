@@ -869,7 +869,7 @@ const BudgetDetailView: React.FC = () => {
                       <div className="col-span-2 row-start-2 sm:col-span-1 sm:row-start-auto">
                         <ProgressBar value={categoryProgress} tone={catTone} />
                       </div>
-                      <div className="row-start-1 flex flex-col items-end text-[13px] sm:row-start-auto">
+                      <div className="row-start-1 flex flex-col items-end text-[13px] max-sm:col-start-2 sm:row-start-auto">
                         <span className="font-semibold text-ink">
                           {formatCurrency(actualSpending)}{" "}
                           <span className="font-normal text-muted">/ {formatCurrency(categoryLimit)}</span>

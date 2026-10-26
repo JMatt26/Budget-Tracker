@@ -11,6 +11,19 @@ if env_path.exists():
     load_dotenv(env_path)
 
 
+def normalize_database_url(url: str) -> str:
+    """Point Postgres URLs at the psycopg (v3) driver.
+
+    Hosts such as Neon and Render hand out `postgres://` or `postgresql://`
+    URLs, which SQLAlchemy would otherwise resolve to the psycopg2 driver.
+    Everything else (SQLite, an explicit `+driver`) is left untouched.
+    """
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    return url
+
+
 class Settings:
     def __init__(self) -> None:
         # Basic app metadata
@@ -24,9 +37,11 @@ class Settings:
         self.is_prod: bool = self.env == "prod"
 
         # Database
-        self.database_url: str = os.getenv(
-            "BUDGET_APP_DATABASE_URL",
-            "sqlite:///./sql_app.db",
+        self.database_url: str = normalize_database_url(
+            os.getenv(
+                "BUDGET_APP_DATABASE_URL",
+                "sqlite:///./sql_app.db",
+            )
         )
 
         # JWT / Auth

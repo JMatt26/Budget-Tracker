@@ -4,19 +4,39 @@ from datetime import date
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import StaticPool, create_engine
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
+from app.core.config import normalize_database_url
 from app.db import Base, get_db
 from app.main import app
 
-# In-memory DB just for tests
-SQLALCHEMY_DATABASE_URL = "sqlite://"
+def _has_postgres() -> bool:
+    return os.environ.get("TEST_DATABASE_URL", "").startswith(("postgres://", "postgresql"))
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
+
+def _make_engine():
+    """In-memory SQLite by default; a real PostgreSQL server when
+    TEST_DATABASE_URL is set, so the same suite can prove the app on both."""
+    if not _has_postgres():
+        return create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+
+    url = make_url(normalize_database_url(os.environ["TEST_DATABASE_URL"]))
+    # every test drops and recreates all tables, so refuse anything that
+    # doesn't look like a scratch database
+    if "test" not in (url.database or "").lower():
+        raise pytest.UsageError(
+            "TEST_DATABASE_URL must point at a database whose name contains 'test': "
+            "the suite drops and recreates every table in it."
+        )
+    return create_engine(url, pool_pre_ping=True)
+
+
+engine = _make_engine()
 
 TestingSessionLocal = sessionmaker(
     autocommit=False,
@@ -42,10 +62,6 @@ def clean_db():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     yield
-
-def _has_postgres() -> bool:
-    return os.environ.get("TEST_DATABASE_URL", "").startswith(("postgres://", "postgresql"))
-
 
 def pytest_collection_modifyitems(config, items):
     """Tests marked `postgres` need a real server (TEST_DATABASE_URL).

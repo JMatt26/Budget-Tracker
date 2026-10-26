@@ -3,6 +3,7 @@ import os
 from functools import lru_cache
 from typing import List
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from dotenv import load_dotenv
 
 # Auto-load .env file if present
@@ -24,12 +25,31 @@ def normalize_database_url(url: str) -> str:
     return url
 
 
+class ConfigError(RuntimeError):
+    """The environment configuration is unsafe or invalid; refuse to start."""
+
+
+KNOWN_ENVS = ("dev", "test", "prod")
+DEFAULT_SECRET_KEY = "dev-secret-key"
+MIN_SECRET_KEY_LENGTH = 32
+
+
 class Settings:
     def __init__(self) -> None:
         # Basic app metadata
         self.app_name: str = os.getenv("BUDGET_APP_NAME", "Budget App API")
         self.app_version: str = os.getenv("BUDGET_APP_VERSION", "0.1.0")
         self.env: str = os.getenv("BUDGET_APP_ENV", "dev")  # dev | test | prod
+        self.debug: bool = os.getenv("BUDGET_APP_DEBUG", "false").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+
+        # The one timezone the app uses to decide what "today" is (e.g. when a
+        # recurring budget's cycle has ended). Servers usually run in UTC.
+        self.timezone: str = os.getenv("BUDGET_APP_TIMEZONE", "America/Toronto")
 
         # Environment helpers
         self.is_dev: bool = self.env == "dev"
@@ -76,6 +96,53 @@ class Settings:
                 parsed = [origin.strip() for origin in cors_raw.split(",")]
 
         self.backend_cors_origins: List[str] = parsed
+
+        self.validate()
+
+    @property
+    def docs_enabled(self) -> bool:
+        """Interactive API docs expose the whole schema: dev/test or DEBUG only."""
+        return self.debug or not self.is_prod
+
+    def validate(self) -> None:
+        """Raise ConfigError for settings that are invalid, or unsafe in prod.
+
+        Messages name the offending variable but never print its value.
+        """
+        problems: List[str] = []
+
+        if self.env not in KNOWN_ENVS:
+            problems.append(
+                f"BUDGET_APP_ENV must be one of {', '.join(KNOWN_ENVS)}"
+            )
+
+        try:
+            ZoneInfo(self.timezone)
+        except (ZoneInfoNotFoundError, ValueError):
+            problems.append("BUDGET_APP_TIMEZONE is not a valid IANA timezone name")
+
+        if self.is_prod:
+            if (
+                self.jwt_secret_key == DEFAULT_SECRET_KEY
+                or len(self.jwt_secret_key) < MIN_SECRET_KEY_LENGTH
+            ):
+                problems.append(
+                    "BUDGET_APP_SECRET_KEY must be set to a random value of at "
+                    f"least {MIN_SECRET_KEY_LENGTH} characters in prod"
+                )
+            if not self.backend_cors_origins or "*" in self.backend_cors_origins:
+                problems.append(
+                    "BUDGET_APP_CORS_ORIGINS must list the exact frontend "
+                    "origin(s) in prod (no '*', not empty)"
+                )
+            if self.database_url.startswith("sqlite"):
+                problems.append(
+                    "BUDGET_APP_DATABASE_URL must point at a server database "
+                    "(not SQLite) in prod"
+                )
+
+        if problems:
+            raise ConfigError("Invalid configuration: " + "; ".join(problems))
 
 
 @lru_cache

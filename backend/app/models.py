@@ -173,7 +173,7 @@ class Income(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False, default="Income")
     amount = Column(Numeric(10, 2), nullable=False)
-    frequency = Column(String(20), nullable=False)  # weekly | biweekly | monthly | yearly
+    frequency = Column(String(20), nullable=False)  # weekly | biweekly | semimonthly | monthly | yearly
 
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
     user = relationship("User", back_populates="incomes")

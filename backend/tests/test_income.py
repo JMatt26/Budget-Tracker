@@ -68,3 +68,9 @@ def test_cannot_modify_another_users_income(auth_client, client):
     assert client.put(f"/income/{income_id}", json={"name": "x"}, headers=other_headers).status_code == 404
     assert client.delete(f"/income/{income_id}", headers=other_headers).status_code == 404
     assert client.get("/income/", headers=other_headers).json() == []
+
+
+def test_semimonthly_frequency_accepted(auth_client):
+    resp = _create(auth_client, frequency="semimonthly")
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["frequency"] == "semimonthly"

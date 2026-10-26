@@ -20,6 +20,7 @@ import { FREQUENCY_TEXT, IncomeProjections } from "./IncomeProjections";
 const FREQUENCY_OPTIONS: { value: IncomeFrequency; label: string }[] = [
   { value: "weekly", label: "Weekly" },
   { value: "biweekly", label: "Biweekly" },
+  { value: "semimonthly", label: "Twice a month" },
   { value: "monthly", label: "Monthly" },
   { value: "yearly", label: "Yearly" },
 ];

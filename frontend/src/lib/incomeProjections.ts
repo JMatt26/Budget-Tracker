@@ -5,6 +5,7 @@ export type ProjectionView = "weekly" | "monthly" | "yearly";
 const PERIODS_PER_YEAR: Record<IncomeFrequency, number> = {
   weekly: 52,
   biweekly: 26,
+  semimonthly: 24,
   monthly: 12,
   yearly: 1,
 };

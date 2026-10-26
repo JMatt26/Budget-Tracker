@@ -13,6 +13,7 @@ const VIEW_LABELS: Record<ProjectionView, string> = {
 export const FREQUENCY_TEXT: Record<IncomeFrequency, string> = {
   weekly: "every week",
   biweekly: "every two weeks",
+  semimonthly: "twice a month",
   monthly: "every month",
   yearly: "every year",
 };

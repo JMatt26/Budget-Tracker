@@ -20,8 +20,13 @@ export const fetchBudget = async (id: number): Promise<Budget> => {
   return data;
 };
 
-export const fetchBudgetStatus = async (id: number): Promise<BudgetStatus> => {
-  const { data } = await api.get<BudgetStatus>(`/budgets/${id}/status`);
+export const fetchBudgetStatus = async (
+  id: number,
+  period?: { start_date: string; end_date: string }
+): Promise<BudgetStatus> => {
+  const { data } = await api.get<BudgetStatus>(`/budgets/${id}/status`, {
+    params: period,
+  });
   return data;
 };
 

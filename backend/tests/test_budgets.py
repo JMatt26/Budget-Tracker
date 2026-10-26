@@ -174,3 +174,84 @@ def test_budget_status_tracks_investment_and_income(auth_client):
     # 500 - 100 (expense) - 50 (investment) + 30 (income)
     assert data["remaining"] == "380.00"
     assert data["exceeded"] is False
+
+
+def test_budget_status_prorates_limit_for_sub_period(auth_client):
+    today = date.today()
+    # A clean 28-day budget so a 7-day week is an exact quarter of it.
+    start = today
+    end = today + timedelta(days=27)
+
+    budget_payload = {
+        "name": "Four Week Budget",
+        "limit": "400.00",
+        "start_date": start.isoformat(),
+        "end_date": end.isoformat(),
+    }
+    budget_resp = auth_client.post("/budgets/", json=budget_payload)
+    assert budget_resp.status_code == 201, budget_resp.text
+    budget_id = budget_resp.json()["id"]
+
+    week1_start = start
+    week1_end = start + timedelta(days=6)
+    week2_start = start + timedelta(days=7)
+
+    in_week1_payload = {
+        "amount": "40.00",
+        "description": "Week 1 expense",
+        "date": week1_start.isoformat(),
+        "type": "expense",
+        "category_id": None,
+        "budget_id": budget_id,
+    }
+    in_week2_payload = {
+        "amount": "999.00",
+        "description": "Week 2 expense, should not count toward week 1",
+        "date": week2_start.isoformat(),
+        "type": "expense",
+        "category_id": None,
+        "budget_id": budget_id,
+    }
+
+    assert auth_client.post("/transactions/", json=in_week1_payload).status_code == 201
+    assert auth_client.post("/transactions/", json=in_week2_payload).status_code == 201
+
+    status_resp = auth_client.get(
+        f"/budgets/{budget_id}/status",
+        params={
+            "start_date": week1_start.isoformat(),
+            "end_date": week1_end.isoformat(),
+        },
+    )
+    assert status_resp.status_code == 200, status_resp.text
+
+    data = status_resp.json()
+    assert data["period_start"] == week1_start.isoformat()
+    assert data["period_end"] == week1_end.isoformat()
+    # 400 * (7 days / 28 days) = 100
+    assert data["period_limit"] == "100.00"
+    assert data["total_expense"] == "40.00"
+    # 100 - 40
+    assert data["remaining"] == "60.00"
+    assert data["exceeded"] is False
+
+
+def test_budget_status_rejects_sub_period_out_of_order(auth_client):
+    today = date.today()
+    budget_payload = {
+        "name": "Order Check Budget",
+        "limit": "100.00",
+        "start_date": today.isoformat(),
+        "end_date": (today + timedelta(days=13)).isoformat(),
+    }
+    budget_resp = auth_client.post("/budgets/", json=budget_payload)
+    budget_id = budget_resp.json()["id"]
+
+    resp = auth_client.get(
+        f"/budgets/{budget_id}/status",
+        params={
+            "start_date": (today + timedelta(days=10)).isoformat(),
+            "end_date": (today + timedelta(days=2)).isoformat(),
+        },
+    )
+    assert resp.status_code == 400

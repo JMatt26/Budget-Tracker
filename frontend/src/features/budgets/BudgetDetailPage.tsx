@@ -21,6 +21,55 @@ const formatDate = (dateStr: string | null | undefined): string => {
   });
 };
 
+const formatLocalDate = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+type WeekSegment = {
+  start: string;
+  end: string;
+};
+
+// Splits a budget's date range into 7-day chunks. The final chunk is
+// shorter than 7 days whenever the range isn't an exact multiple of a week.
+const computeWeekSegments = (startStr: string, endStr: string): WeekSegment[] => {
+  const start = new Date(`${startStr}T00:00:00`);
+  const end = new Date(`${endStr}T00:00:00`);
+  const segments: WeekSegment[] = [];
+
+  let cursor = new Date(start);
+  while (cursor <= end) {
+    const segmentEnd = new Date(cursor);
+    segmentEnd.setDate(segmentEnd.getDate() + 6);
+    if (segmentEnd > end) {
+      segmentEnd.setTime(end.getTime());
+    }
+    segments.push({
+      start: formatLocalDate(cursor),
+      end: formatLocalDate(segmentEnd),
+    });
+    cursor = new Date(segmentEnd);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return segments;
+};
+
+// Finds the week that contains today, falling back to the nearest edge
+// (first week if the budget hasn't started yet, last week if it's over).
+const findCurrentWeekIndex = (segments: WeekSegment[]): number => {
+  if (segments.length === 0) return 0;
+  const todayStr = formatLocalDate(new Date());
+  const index = segments.findIndex(
+    (seg) => todayStr >= seg.start && todayStr <= seg.end
+  );
+  if (index !== -1) return index;
+  return todayStr < segments[0].start ? 0 : segments.length - 1;
+};
+
 const fetchCategories = async (): Promise<Category[]> => {
   const { data } = await api.get("/categories", {
     params: { limit: 100, offset: 0 },
@@ -418,6 +467,8 @@ export const BudgetDetailPage: React.FC = () => {
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [sortBy, setSortBy] = useState<"date" | "amount" | "category">("date");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [periodView, setPeriodView] = useState<"monthly" | "weekly">("monthly");
+  const [weekIndex, setWeekIndex] = useState<number | null>(null);
 
   const { data: budget, isLoading: budgetLoading } = useQuery({
     queryKey: ["budget", budgetId],
@@ -425,13 +476,46 @@ export const BudgetDetailPage: React.FC = () => {
     enabled: !Number.isNaN(budgetId),
   });
 
+  const weekSegments = useMemo(() => {
+    if (!budget) return [];
+    return computeWeekSegments(
+      budget.start_date.slice(0, 10),
+      budget.end_date.slice(0, 10)
+    );
+  }, [budget]);
+
+  // Default to whichever week contains today the first time weekly data
+  // becomes available (e.g. "it is the third week of the month").
+  useEffect(() => {
+    if (weekSegments.length > 0 && weekIndex === null) {
+      setWeekIndex(findCurrentWeekIndex(weekSegments));
+    }
+  }, [weekSegments, weekIndex]);
+
+  const selectedWeek =
+    periodView === "weekly" && weekIndex !== null
+      ? weekSegments[weekIndex] ?? null
+      : null;
+
   const {
     data: status,
     isLoading: statusLoading,
   } = useQuery({
-    queryKey: ["budget-status", budgetId],
-    queryFn: () => fetchBudgetStatus(budgetId),
-    enabled: !Number.isNaN(budgetId),
+    queryKey: [
+      "budget-status",
+      budgetId,
+      selectedWeek?.start ?? null,
+      selectedWeek?.end ?? null,
+    ],
+    queryFn: () =>
+      fetchBudgetStatus(
+        budgetId,
+        selectedWeek
+          ? { start_date: selectedWeek.start, end_date: selectedWeek.end }
+          : undefined
+      ),
+    enabled:
+      !Number.isNaN(budgetId) && (periodView === "monthly" || !!selectedWeek),
   });
 
   const {
@@ -521,10 +605,70 @@ export const BudgetDetailPage: React.FC = () => {
     const totalInvested = status?.total_investment ?? 0;
     const totalSaved = status?.total_income ?? 0;
     const remaining = status?.remaining ?? 0;
-    const limit = budget ? Number(budget.limit ?? 0) : 0;
+    const limit = status
+      ? Number(status.period_limit ?? 0)
+      : budget
+      ? Number(budget.limit ?? 0)
+      : 0;
     const progress = limit ? Math.min(100, (totalExpense / limit) * 100) : 0;
+    const currentWeek =
+      periodView === "weekly" && weekIndex !== null
+        ? weekSegments[weekIndex]
+        : null;
     return (
       <div className="space-y-4">
+        <Card>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPeriodView("monthly")}
+                className={`rounded-full px-4 py-1 text-sm font-medium transition ${
+                  periodView === "monthly"
+                    ? "bg-slate-200 text-slate-900"
+                    : "bg-slate-800 text-slate-400 hover:bg-slate-900"
+                }`}
+              >
+                Monthly
+              </button>
+              <button
+                onClick={() => setPeriodView("weekly")}
+                className={`rounded-full px-4 py-1 text-sm font-medium transition ${
+                  periodView === "weekly"
+                    ? "bg-slate-200 text-slate-900"
+                    : "bg-slate-800 text-slate-400 hover:bg-slate-900"
+                }`}
+              >
+                Weekly
+              </button>
+            </div>
+            {periodView === "weekly" && currentWeek && weekIndex !== null && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setWeekIndex(Math.max(0, weekIndex - 1))}
+                  disabled={weekIndex === 0}
+                  className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 transition hover:border-sky-500 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  ← Prev
+                </button>
+                <span className="text-xs text-slate-300">
+                  Week {weekIndex + 1} of {weekSegments.length} (
+                  {formatDate(currentWeek.start)} – {formatDate(currentWeek.end)})
+                </span>
+                <button
+                  onClick={() =>
+                    setWeekIndex(
+                      Math.min(weekSegments.length - 1, weekIndex + 1)
+                    )
+                  }
+                  disabled={weekIndex === weekSegments.length - 1}
+                  className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 transition hover:border-sky-500 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Next →
+                </button>
+              </div>
+            )}
+          </div>
+        </Card>
         <div className="grid gap-3 md:grid-cols-5">
           <Card>
             <p className="text-xs uppercase tracking-wide text-slate-400">
@@ -855,7 +999,7 @@ export const BudgetDetailPage: React.FC = () => {
         </Card>
       </div>
     );
-  }, [budget, status, budgetCategories, deleteCategoryMutation, budgetTransactions, sortBy, sortOrder, transactionsLoading, numericSubTab]);
+  }, [budget, status, budgetCategories, deleteCategoryMutation, budgetTransactions, sortBy, sortOrder, transactionsLoading, numericSubTab, periodView, weekIndex, weekSegments]);
 
   const graphsContent = (
     <Card>

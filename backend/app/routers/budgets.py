@@ -1,5 +1,6 @@
+from datetime import date
 from decimal import Decimal
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import func
@@ -152,6 +153,14 @@ def delete_budget(
 @router.get("/{budget_id}/status", response_model=schemas.BudgetStatus)
 def get_budget_status(
     budget_id: int,
+    start_date: Optional[date] = Query(
+        None,
+        description="Optional sub-period start (e.g. a week within the budget). Clamped to the budget's own range.",
+    ),
+    end_date: Optional[date] = Query(
+        None,
+        description="Optional sub-period end (e.g. a week within the budget). Clamped to the budget's own range.",
+    ),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
@@ -169,7 +178,29 @@ def get_budget_status(
             detail="Budget not found.",
         )
 
-    # Sum of transactions within the budget period, by type.
+    # Clamp the requested sub-period to the budget's own range so callers
+    # can't query outside of it (e.g. a week that overlaps the next month).
+    period_start = max(budget.start_date, start_date) if start_date else budget.start_date
+    period_end = min(budget.end_date, end_date) if end_date else budget.end_date
+
+    if period_start > period_end:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="start_date must be before or equal to end_date within the budget's range.",
+        )
+
+    # Prorate the limit for the requested sub-period based on its share of
+    # the budget's total days, so a weekly slice of a monthly budget gets a
+    # weekly-sized limit instead of the full monthly one.
+    total_days = (budget.end_date - budget.start_date).days + 1
+    period_days = (period_end - period_start).days + 1
+    period_limit = (
+        Decimal(budget.limit) * Decimal(period_days) / Decimal(total_days)
+        if total_days > 0
+        else Decimal(budget.limit)
+    )
+
+    # Sum of transactions within the (sub-)period, by type.
     # Only count transactions that are directly linked to this budget.
     def sum_for_type(tx_type: str) -> Decimal:
         total = (
@@ -177,8 +208,8 @@ def get_budget_status(
             .filter(models.Transaction.type == tx_type)
             .filter(models.Transaction.budget_id == budget_id)
             .filter(models.Transaction.user_id == current_user.id)
-            .filter(models.Transaction.date >= budget.start_date)
-            .filter(models.Transaction.date <= budget.end_date)
+            .filter(models.Transaction.date >= period_start)
+            .filter(models.Transaction.date <= period_end)
             .scalar()
         )
         return Decimal(total or 0)
@@ -188,13 +219,14 @@ def get_budget_status(
     total_income = sum_for_type("income")
 
     # Investments are set aside out of the budget; income tops it back up.
-    remaining = (
-        Decimal(budget.limit) - total_expense - total_investment + total_income
-    )
+    remaining = period_limit - total_expense - total_investment + total_income
     exceeded = remaining < 0
 
     return schemas.BudgetStatus(
         budget=budget,
+        period_start=period_start,
+        period_end=period_end,
+        period_limit=period_limit,
         total_expense=total_expense,
         total_investment=total_investment,
         total_income=total_income,

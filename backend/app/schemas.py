@@ -100,6 +100,20 @@ class BudgetStatus(BaseModel):
     exceeded: bool
 
 
+class ExpenseBreakdownItem(BaseModel):
+    category_id: Optional[int] = None
+    category_name: str
+    total: Decimal
+    limit: Optional[Decimal] = None  # the category's limit in this budget, if it has one
+
+
+class ExpenseBreakdown(BaseModel):
+    period_start: DateType
+    period_end: DateType
+    total_expense: Decimal
+    items: List[ExpenseBreakdownItem]
+
+
 class BudgetCategoryCreate(BaseModel):
     category_id: Optional[int] = None  # If None, create new category
     category_name: Optional[str] = Field(None, max_length=100)  # For new category

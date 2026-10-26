@@ -19,6 +19,20 @@ def _read(budget: models.Budget, limit: Decimal) -> schemas.BudgetRead:
     return schemas.BudgetRead.model_validate(budget).model_copy(update={"limit": limit})
 
 
+def _clamp_period(
+    budget: models.Budget, start_date: Optional[date], end_date: Optional[date]
+):
+    """Clamp an optional sub-period to the budget's own range."""
+    period_start = max(budget.start_date, start_date) if start_date else budget.start_date
+    period_end = min(budget.end_date, end_date) if end_date else budget.end_date
+    if period_start > period_end:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="start_date must be before or equal to end_date within the budget's range.",
+        )
+    return period_start, period_end
+
+
 @router.post(
     "/",
     response_model=schemas.BudgetRead,
@@ -245,6 +259,79 @@ def get_budget_status(
     )
 
 
+@router.get(
+    "/{budget_id}/expense-breakdown",
+    response_model=schemas.ExpenseBreakdown,
+)
+def get_expense_breakdown(
+    budget_id: int,
+    start_date: Optional[date] = Query(None, description="Optional sub-period start, clamped to the budget."),
+    end_date: Optional[date] = Query(None, description="Optional sub-period end, clamped to the budget."),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Expenses linked to this budget, grouped by category (including
+    uncategorized and categories that were never added to the budget)."""
+    budget = (
+        db.query(models.Budget)
+        .filter(
+            models.Budget.id == budget_id,
+            models.Budget.user_id == current_user.id,
+        )
+        .first()
+    )
+    if budget is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Budget not found.",
+        )
+
+    period_start, period_end = _clamp_period(budget, start_date, end_date)
+
+    rows = (
+        db.query(
+            models.Transaction.category_id,
+            models.Category.name,
+            func.sum(models.Transaction.amount),
+        )
+        .outerjoin(models.Category, models.Transaction.category_id == models.Category.id)
+        .filter(models.Transaction.type == "expense")
+        .filter(models.Transaction.budget_id == budget_id)
+        .filter(models.Transaction.user_id == current_user.id)
+        .filter(models.Transaction.date >= period_start)
+        .filter(models.Transaction.date <= period_end)
+        .group_by(models.Transaction.category_id, models.Category.name)
+        .all()
+    )
+
+    limits = {
+        bc.category_id: bc.limit
+        for bc in db.query(models.BudgetCategory).filter(
+            models.BudgetCategory.budget_id == budget_id
+        )
+    }
+
+    items = sorted(
+        (
+            schemas.ExpenseBreakdownItem(
+                category_id=category_id,
+                category_name=name or "Uncategorized",
+                total=Decimal(total or 0),
+                limit=limits.get(category_id),
+            )
+            for category_id, name, total in rows
+        ),
+        key=lambda item: item.total,
+        reverse=True,
+    )
+    return schemas.ExpenseBreakdown(
+        period_start=period_start,
+        period_end=period_end,
+        total_expense=sum((i.total for i in items), Decimal(0)),
+        items=items,
+    )
+
+
 @router.post(
     "/{budget_id}/categories",
     response_model=schemas.BudgetCategoryRead,
@@ -349,6 +436,7 @@ def add_category_to_budget(
     actual_spending = (
         db.query(func.coalesce(func.sum(models.Transaction.amount), 0))
         .filter(models.Transaction.category_id == category.id)
+        .filter(models.Transaction.type == "expense")
         .filter(models.Transaction.budget_id == budget_id)
         .filter(models.Transaction.user_id == current_user.id)
         .filter(models.Transaction.date >= budget.start_date)
@@ -371,6 +459,8 @@ def add_category_to_budget(
 @router.get("/{budget_id}/categories", response_model=List[schemas.BudgetCategoryRead])
 def get_budget_categories(
     budget_id: int,
+    start_date: Optional[date] = Query(None, description="Optional sub-period start, clamped to the budget."),
+    end_date: Optional[date] = Query(None, description="Optional sub-period end, clamped to the budget."),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -389,6 +479,8 @@ def get_budget_categories(
             detail="Budget not found.",
         )
 
+    period_start, period_end = _clamp_period(budget, start_date, end_date)
+
     # Get all budget categories
     budget_categories = (
         db.query(models.BudgetCategory)
@@ -403,10 +495,11 @@ def get_budget_categories(
         actual_spending = (
             db.query(func.coalesce(func.sum(models.Transaction.amount), 0))
             .filter(models.Transaction.category_id == bc.category_id)
+            .filter(models.Transaction.type == "expense")
             .filter(models.Transaction.budget_id == budget_id)
             .filter(models.Transaction.user_id == current_user.id)
-            .filter(models.Transaction.date >= budget.start_date)
-            .filter(models.Transaction.date <= budget.end_date)
+            .filter(models.Transaction.date >= period_start)
+            .filter(models.Transaction.date <= period_end)
             .scalar() or Decimal("0")
         )
 
@@ -473,6 +566,7 @@ def update_budget_category(
     actual_spending = (
         db.query(func.coalesce(func.sum(models.Transaction.amount), 0))
         .filter(models.Transaction.category_id == budget_category.category_id)
+        .filter(models.Transaction.type == "expense")
         .filter(models.Transaction.budget_id == budget_id)
         .filter(models.Transaction.user_id == current_user.id)
         .filter(models.Transaction.date >= budget.start_date)
@@ -578,6 +672,7 @@ def get_budget_category_transactions(
         db.query(models.Transaction)
         .filter(models.Transaction.user_id == current_user.id)
         .filter(models.Transaction.category_id == budget_category.category_id)
+        .filter(models.Transaction.type == "expense")
         .filter(models.Transaction.budget_id == budget_id)
         .filter(models.Transaction.date >= budget.start_date)
         .filter(models.Transaction.date <= budget.end_date)

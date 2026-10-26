@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+
+node_modules
+
+.DS_Store
+
+.vite
+dist/
+
+# Local databases and backups of them (can contain real data)
+*.db
+*.db-*
+*.bak
+*.bak-*
+sql_app.db*

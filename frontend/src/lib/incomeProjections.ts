@@ -20,3 +20,18 @@ export const computeProjections = (
     yearly,
   };
 };
+
+export const sumProjections = (
+  incomes: { amount: number | string; frequency: IncomeFrequency }[]
+): Record<ProjectionView, number> =>
+  incomes.reduce(
+    (total, inc) => {
+      const p = computeProjections(Number(inc.amount), inc.frequency);
+      return {
+        weekly: total.weekly + p.weekly,
+        monthly: total.monthly + p.monthly,
+        yearly: total.yearly + p.yearly,
+      };
+    },
+    { weekly: 0, monthly: 0, yearly: 0 }
+  );

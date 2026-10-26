@@ -72,6 +72,7 @@ export type IncomeFrequency = "weekly" | "biweekly" | "monthly" | "yearly";
 
 export interface Income {
   id: number;
+  name: string;
   amount: number;
   frequency: IncomeFrequency;
   created_at?: string;

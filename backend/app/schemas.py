@@ -161,6 +161,7 @@ class TransactionUpdate(BaseModel):
 
 
 class IncomeBase(BaseModel):
+    name: str = Field("Income", min_length=1, max_length=100)
     amount: Decimal = Field(..., max_digits=10, decimal_places=2, gt=0)
     frequency: str = Field(..., pattern="^(weekly|biweekly|monthly|yearly)$")
 
@@ -170,6 +171,7 @@ class IncomeCreate(IncomeBase):
 
 
 class IncomeUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
     amount: Optional[Decimal] = Field(None, max_digits=10, decimal_places=2, gt=0)
     frequency: Optional[str] = Field(None, pattern="^(weekly|biweekly|monthly|yearly)$")
 

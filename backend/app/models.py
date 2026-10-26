@@ -160,10 +160,9 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
-    income = relationship(
+    incomes = relationship(
         "Income",
         back_populates="user",
-        uselist=False,
         cascade="all, delete-orphan",
     )
 
@@ -172,11 +171,12 @@ class Income(Base):
     __tablename__ = "incomes"
 
     id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False, default="Income")
     amount = Column(Numeric(10, 2), nullable=False)
     frequency = Column(String(20), nullable=False)  # weekly | biweekly | monthly | yearly
 
-    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
-    user = relationship("User", back_populates="income")
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    user = relationship("User", back_populates="incomes")
 
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

@@ -21,7 +21,9 @@ services:
       --forwarded-allow-ips="*"
       --access-logfile - --error-logfile -
     healthCheckPath: /health
-    autoDeploy: true
+    # Deploy only after the GitHub CI checks pass on the commit (Render dashboard:
+    # Auto-Deploy -> "After CI Checks Pass"). Replaces the older autoDeploy flag.
+    autoDeployTrigger: checksPass
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.12

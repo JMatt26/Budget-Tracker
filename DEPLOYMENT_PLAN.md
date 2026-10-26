@@ -189,7 +189,7 @@ There are no frontend tests today (`package.json` has only `lint`). Add a small,
       buildCommand: pip install -r requirements.txt
       startCommand: alembic upgrade head && gunicorn app.main:app -k uvicorn.workers.UvicornWorker -w 1 -b 0.0.0.0:$PORT --timeout 60 --graceful-timeout 30 --keep-alive 5 --forwarded-allow-ips="*" --access-logfile - --error-logfile -
       healthCheckPath: /health
-      autoDeploy: true
+      autoDeployTrigger: checksPass
       envVars:
         - { key: PYTHON_VERSION, value: 3.12.12 }
         - { key: BUDGET_APP_ENV, value: prod }

@@ -279,13 +279,13 @@ const TYPE_FILTERS: { value: "" | "income" | "expense" | "investment"; label: st
                 {group.items.map((tx) => (
                   <div
                     key={tx.id}
-                    className="group flex items-center gap-3 rounded-xl px-3 py-2.5 transition hover:bg-canvas sm:gap-4"
+                    className="group flex items-center gap-3 rounded-xl px-3 py-2.5 transition hover:bg-canvas max-sm:grid max-sm:grid-cols-[auto_minmax(0,1fr)_auto] max-sm:gap-y-0 max-sm:[&>:first-child]:row-span-2 sm:gap-4"
                   >
                     <CategoryAvatar
                       name={tx.description || tx.category?.name}
                       color={categoryColor(tx.category ?? null, tx.id)}
                     />
-                    <div className="flex min-w-0 flex-1 flex-col">
+                    <div className="flex min-w-0 flex-1 flex-col max-sm:row-span-2">
                       <span className="truncate text-sm font-medium text-ink">
                         {tx.description ?? "—"}
                       </span>
@@ -300,7 +300,7 @@ const TYPE_FILTERS: { value: "" | "income" | "expense" | "investment"; label: st
                         )}
                         {tx.budget ? (
                           <button
-                            className="font-medium text-accent hover:text-accent-hover"
+                            className="font-medium text-accent hover:text-accent-hover max-sm:text-left"
                             type="button"
                             onClick={() =>
                               navigate(`/budgets/${tx.budget?.id}`)
@@ -318,13 +318,13 @@ const TYPE_FILTERS: { value: "" | "income" | "expense" | "investment"; label: st
                     </span>
                     <span
                       className={clsx(
-                        "min-w-[88px] text-right text-[15px] font-semibold",
+                        "min-w-[88px] text-right text-[15px] font-semibold max-sm:self-end",
                         tx.type === "expense" ? "text-ink" : TYPE_META[tx.type].text
                       )}
                     >
                       {formatSignedMoney(tx.amount, tx.type)}
                     </span>
-                    <div className="flex gap-0.5 opacity-100 transition sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
+                    <div className="flex gap-0.5 opacity-100 transition max-sm:-mr-2 max-sm:justify-end sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
                       <IconButton label="Edit transaction" onClick={() => handleEditClick(tx)}>
                         <Icon name="edit" size={16} />
                       </IconButton>

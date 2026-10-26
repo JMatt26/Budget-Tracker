@@ -84,11 +84,11 @@ Files: [config.py](backend/app/core/config.py), [db.py](backend/app/db.py).
 
 ### 1.4 [AGENT] Dependencies: pin, add what prod needs, split dev
 Files: `backend/requirements.txt`, new `backend/requirements-dev.txt`.
-- Runtime, exact pins (versions taken from `.venv/bin/pip freeze` after verifying tests pass): `fastapi, uvicorn[standard], sqlalchemy, alembic, psycopg[binary], gunicorn, python-jose[cryptography], passlib, bcrypt (version compatible with passlib, e.g. 4.0.1), pydantic[email], python-multipart, python-dotenv, tzdata, slowapi`.
+- Runtime, exact pins (versions taken from `.venv/bin/pip freeze` after verifying tests pass): `fastapi, uvicorn[standard], sqlalchemy, alembic, psycopg[binary], gunicorn, python-jose[cryptography], passlib (the app hashes with `pbkdf2_sha256`, so **no bcrypt is needed**), pydantic[email], python-multipart, python-dotenv, tzdata, slowapi`.
 - Drop from runtime what is not imported (grep `app/` first): likely `sqlmodel`, `aiosqlite`, `greenlet`. Dev file: `-r requirements.txt` + `pytest, pytest-asyncio, httpx` (+ any of the dropped ones tests actually need).
 - Prove it with a **fresh venv in the scratchpad dir**: `python3.12 -m venv <scratch>/v && <scratch>/v/bin/pip install -r requirements-dev.txt && <scratch>/v/bin/python -m pytest -q`.
 
-**Done when:** a fresh venv built only from the requirements files passes all 69+ tests and imports `psycopg, gunicorn, alembic, slowapi, zoneinfo`.
+**Done when:** a fresh venv built only from the requirements files passes all tests and imports `psycopg, gunicorn, alembic, slowapi, zoneinfo`.
 
 ### 1.5 [AGENT] Production safety, and retire the startup schema hack in prod
 Files: [config.py](backend/app/core/config.py), [main.py](backend/app/main.py), [schema_upgrades.py](backend/app/schema_upgrades.py), rename `core/__inti__.py` -> `__init__.py`.

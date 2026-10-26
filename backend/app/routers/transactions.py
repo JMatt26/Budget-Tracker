@@ -24,7 +24,13 @@ def _budget_cycle_id(db: Session, user_id: int, budget_id: Optional[int], tx_dat
         .filter(models.Budget.id == budget_id, models.Budget.user_id == user_id)
         .first()
     )
-    return cycle_for_date(db, budget, tx_date).id if budget else budget_id
+    if budget is None:
+        # never accept a budget that isn't the caller's (or doesn't exist)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Budget does not exist.",
+        )
+    return cycle_for_date(db, budget, tx_date).id
 
 
 @router.post(
@@ -160,12 +166,13 @@ def update_transaction(
     # Validate category if updated
     if "category_id" in update_data and update_data["category_id"] is not None:
         category = db.query(models.Category).filter(
-            models.Category.id == update_data["category_id"]
+            models.Category.id == update_data["category_id"],
+            models.Category.user_id == current_user.id,
         ).first()
         if category is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cateogry does not exist.",
+                detail="Category does not exist.",
             )
 
     # An expense must always carry a payment method; other types never do.

@@ -30,3 +30,27 @@ export const fetchBudgetStatus = async (
   return data;
 };
 
+
+export type ExpenseBreakdownItem = {
+  category_id: number | null;
+  category_name: string;
+  total: number | string;
+  limit: number | string | null;
+};
+
+export type ExpenseBreakdown = {
+  period_start: string;
+  period_end: string;
+  total_expense: number | string;
+  items: ExpenseBreakdownItem[];
+};
+
+export const fetchExpenseBreakdown = async (
+  id: number,
+  period?: { start_date: string; end_date: string }
+): Promise<ExpenseBreakdown> => {
+  const { data } = await api.get<ExpenseBreakdown>(`/budgets/${id}/expense-breakdown`, {
+    params: period,
+  });
+  return data;
+};

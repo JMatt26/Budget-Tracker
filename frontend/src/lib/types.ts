@@ -1,5 +1,9 @@
 export type TransactionType = "income" | "expense" | "investment";
 
+export type PaymentMethod = "Amex" | "Visa" | "Debit" | "Cash";
+
+export const PAYMENT_METHODS: PaymentMethod[] = ["Amex", "Visa", "Debit", "Cash"];
+
 export interface Category {
   id: number;
   name: string;
@@ -14,6 +18,7 @@ export interface Transaction {
   date: string; // ISO
   description?: string | null;
   type: TransactionType;
+  payment_method?: PaymentMethod | null;
   category_id?: number | null;
   category?: Category | null;
   budget_id?: number | null;

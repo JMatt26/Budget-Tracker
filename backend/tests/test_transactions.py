@@ -18,6 +18,7 @@ def test_create_transaction(auth_client):
         "description": "Grocery shopping",
         "date": date.today().isoformat(),
         "type": "expense",
+        "payment_method": "Cash",
         "category_id": None,
     }
 
@@ -38,6 +39,7 @@ def test_list_transactions_returns_created_transaction(auth_client):
         "description": "Groceries",
         "date": "2025-01-01",
         "type": "expense",
+        "payment_method": "Cash",
     }
     create_resp = auth_client.post("/transactions", json=create_payload)
     assert create_resp.status_code == 201, create_resp.text
@@ -69,6 +71,7 @@ def test_list_transactions_pagination_metadata(auth_client):
             "description": f"Tx {i}",
             "date": "2025-01-01",
             "type": "expense",
+            "payment_method": "Cash",
         }
         resp = auth_client.post("/transactions", json=payload)
         assert resp.status_code == 201, resp.text
@@ -97,6 +100,7 @@ def test_get_transaction_by_id(auth_client):
         "description": "Coffee",
         "date": date.today().isoformat(),
         "type": "expense",
+        "payment_method": "Cash",
         "category_id": None,
     }
     resp = auth_client.post("/transactions/", json=payload)
@@ -118,6 +122,7 @@ def test_update_transaction(auth_client):
         "description": "Old desc",
         "date": date.today().isoformat(),
         "type": "expense",
+        "payment_method": "Cash",
         "category_id": None,
     }
     resp = auth_client.post("/transactions/", json=payload)
@@ -142,6 +147,7 @@ def test_delete_transaction(auth_client):
         "description": "To delete",
         "date": date.today().isoformat(),
         "type": "expense",
+        "payment_method": "Cash",
         "category_id": None,
     }
     resp = auth_client.post("/transactions/", json=payload)
@@ -154,3 +160,65 @@ def test_delete_transaction(auth_client):
     # verify it is actually gone
     get_resp = auth_client.get(f"/transactions/{tx_id}")
     assert get_resp.status_code == 404
+
+
+def _tx(**overrides):
+    return {
+        "amount": "12.50",
+        "date": "2025-01-15",
+        "type": "expense",
+        "payment_method": "Visa",
+        **overrides,
+    }
+
+
+def test_expense_requires_payment_method(auth_client):
+    payload = _tx()
+    del payload["payment_method"]
+    resp = auth_client.post("/transactions/", json=payload)
+    assert resp.status_code == 422, resp.text
+
+
+def test_expense_rejects_unknown_payment_method(auth_client):
+    resp = auth_client.post("/transactions/", json=_tx(payment_method="Mastercard"))
+    assert resp.status_code == 422, resp.text
+
+
+def test_expense_accepts_each_payment_method(auth_client):
+    for method in ["Amex", "Visa", "Debit", "Cash"]:
+        resp = auth_client.post("/transactions/", json=_tx(payment_method=method))
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["payment_method"] == method
+
+
+def test_non_expense_payment_method_is_ignored(auth_client):
+    income = {"amount": "100.00", "date": "2025-01-15", "type": "income"}
+    resp = auth_client.post("/transactions/", json=income)
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["payment_method"] is None
+
+    resp = auth_client.post("/transactions/", json={**income, "payment_method": "Cash"})
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["payment_method"] is None
+
+
+def test_update_payment_method_and_type_changes(auth_client):
+    tx_id = auth_client.post("/transactions/", json=_tx()).json()["id"]
+
+    resp = auth_client.put(f"/transactions/{tx_id}", json={"payment_method": "Amex"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["payment_method"] == "Amex"
+
+    # Becoming income clears the method...
+    resp = auth_client.put(f"/transactions/{tx_id}", json={"type": "income"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["payment_method"] is None
+
+    # ...and becoming an expense again needs one.
+    resp = auth_client.put(f"/transactions/{tx_id}", json={"type": "expense"})
+    assert resp.status_code == 422, resp.text
+    resp = auth_client.put(
+        f"/transactions/{tx_id}", json={"type": "expense", "payment_method": "Debit"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["payment_method"] == "Debit"

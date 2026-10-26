@@ -95,6 +95,7 @@ def test_budget_status_tracks_expenses(auth_client):
         "description": "Groceries 1",
         "date": today.isoformat(),
         "type": "expense",
+        "payment_method": "Cash",
         "category_id": None,
         "budget_id": budget_id,
     }
@@ -103,6 +104,7 @@ def test_budget_status_tracks_expenses(auth_client):
         "description": "Groceries 2",
         "date": (today + timedelta(days=1)).isoformat(),
         "type": "expense",
+        "payment_method": "Cash",
         "category_id": None,
         "budget_id": budget_id,
     }
@@ -122,7 +124,7 @@ def test_budget_status_tracks_expenses(auth_client):
     exceeded = data["exceeded"]
 
     assert totals_expense == "150.00"
-    assert remaining == "350.00"
+    assert remaining == "500.00"
     assert exceeded is False
 
 
@@ -145,6 +147,7 @@ def test_budget_status_tracks_investment_and_income(auth_client):
         "description": "Groceries",
         "date": today.isoformat(),
         "type": "expense",
+        "payment_method": "Cash",
         "category_id": None,
         "budget_id": budget_id,
     }
@@ -176,8 +179,8 @@ def test_budget_status_tracks_investment_and_income(auth_client):
     assert data["total_expense"] == "100.00"
     assert data["total_investment"] == "50.00"
     assert data["total_income"] == "30.00"
-    # 500 - 100 (expense) - 50 (investment) + 30 (income)
-    assert data["remaining"] == "380.00"
+    # saved = 30 - 100 - 50 = -120; remaining = 500 - 100 - 50 - (-120)
+    assert data["remaining"] == "470.00"
     assert data["exceeded"] is False
 
 
@@ -206,6 +209,7 @@ def test_budget_status_prorates_limit_for_sub_period(auth_client):
         "description": "Week 1 expense",
         "date": week1_start.isoformat(),
         "type": "expense",
+        "payment_method": "Cash",
         "category_id": None,
         "budget_id": budget_id,
     }
@@ -214,6 +218,7 @@ def test_budget_status_prorates_limit_for_sub_period(auth_client):
         "description": "Week 2 expense, should not count toward week 1",
         "date": week2_start.isoformat(),
         "type": "expense",
+        "payment_method": "Cash",
         "category_id": None,
         "budget_id": budget_id,
     }
@@ -236,8 +241,8 @@ def test_budget_status_prorates_limit_for_sub_period(auth_client):
     # 400 * (7 days / 28 days) = 100
     assert data["period_limit"] == "100.00"
     assert data["total_expense"] == "40.00"
-    # 100 - 40
-    assert data["remaining"] == "60.00"
+    # no income logged, so remaining is the whole prorated limit
+    assert data["remaining"] == "100.00"
     assert data["exceeded"] is False
 
 
@@ -292,3 +297,85 @@ def test_budget_limit_is_total_monthly_income(auth_client):
     assert auth_client.get(f"/budgets/{budget_id}").json()["limit"] == "2733.33"
     assert auth_client.get("/budgets/").json()["items"][0]["limit"] == "2733.33"
     assert auth_client.get(f"/budgets/{budget_id}/status").json()["period_limit"] == "2733.33"
+
+
+def _budget_with_category(auth_client, start, end):
+    budget_id = auth_client.post(
+        "/budgets/",
+        json={"name": "B", "start_date": start.isoformat(), "end_date": end.isoformat()},
+    ).json()["id"]
+    cat_id = auth_client.post(
+        "/categories/", json={"name": "Food", "type": "expense"}
+    ).json()["id"]
+    resp = auth_client.post(
+        f"/budgets/{budget_id}/categories", json={"category_id": cat_id, "limit": "200.00"}
+    )
+    assert resp.status_code == 201, resp.text
+    return budget_id, cat_id
+
+
+def _post_tx(auth_client, budget_id, cat_id, day, amount, tx_type="expense"):
+    payload = {
+        "amount": amount,
+        "date": day.isoformat(),
+        "type": tx_type,
+        "category_id": cat_id,
+        "budget_id": budget_id,
+    }
+    if tx_type == "expense":
+        payload["payment_method"] = "Cash"
+    assert auth_client.post("/transactions/", json=payload).status_code == 201
+
+
+def test_category_spending_counts_only_expenses(auth_client):
+    today = date.today()
+    budget_id, cat_id = _budget_with_category(auth_client, today, today + timedelta(days=13))
+    _post_tx(auth_client, budget_id, cat_id, today, "40.00")
+    _post_tx(auth_client, budget_id, cat_id, today, "500.00", "income")
+    _post_tx(auth_client, budget_id, cat_id, today, "60.00", "investment")
+
+    cats = auth_client.get(f"/budgets/{budget_id}/categories").json()
+    assert cats[0]["actual_spending"] == "40.00"
+
+
+def test_category_spending_respects_sub_period(auth_client):
+    today = date.today()
+    budget_id, cat_id = _budget_with_category(auth_client, today, today + timedelta(days=13))
+    _post_tx(auth_client, budget_id, cat_id, today, "10.00")
+    _post_tx(auth_client, budget_id, cat_id, today + timedelta(days=8), "25.00")
+
+    week2 = {
+        "start_date": (today + timedelta(days=7)).isoformat(),
+        "end_date": (today + timedelta(days=13)).isoformat(),
+    }
+    cats = auth_client.get(f"/budgets/{budget_id}/categories", params=week2).json()
+    assert cats[0]["actual_spending"] == "25.00"
+
+
+def test_expense_breakdown_groups_by_category(auth_client):
+    today = date.today()
+    budget_id, cat_id = _budget_with_category(auth_client, today, today + timedelta(days=13))
+    other_id = auth_client.post(
+        "/categories/", json={"name": "Fun", "type": "expense"}
+    ).json()["id"]  # never added to the budget
+
+    _post_tx(auth_client, budget_id, cat_id, today, "30.00")
+    _post_tx(auth_client, budget_id, cat_id, today, "20.00")
+    _post_tx(auth_client, budget_id, other_id, today, "70.00")
+    _post_tx(auth_client, budget_id, None, today, "5.00")
+    _post_tx(auth_client, budget_id, cat_id, today, "999.00", "income")
+
+    data = auth_client.get(f"/budgets/{budget_id}/expense-breakdown").json()
+    assert data["total_expense"] == "125.00"
+    assert [(i["category_name"], i["total"]) for i in data["items"]] == [
+        ("Fun", "70.00"),
+        ("Food", "50.00"),
+        ("Uncategorized", "5.00"),
+    ]
+    food = next(i for i in data["items"] if i["category_name"] == "Food")
+    assert food["limit"] == "200.00"
+    assert next(i for i in data["items"] if i["category_name"] == "Fun")["limit"] is None
+
+
+def test_expense_breakdown_404_for_unknown_budget(auth_client):
+    assert auth_client.get("/budgets/999/expense-breakdown").status_code == 404

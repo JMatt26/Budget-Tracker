@@ -92,6 +92,68 @@ export const ProgressRing = ({
   );
 };
 
+export type RingSegment = { label: string; value: number; color: string };
+
+// A donut split into segments sized by their share of the combined total.
+// Non-positive values get no arc. Arcs animate as the shares change.
+export const BreakdownRing = ({
+  segments,
+  size = 148,
+  label,
+}: {
+  segments: RingSegment[];
+  size?: number;
+  label: string;
+}) => {
+  const stroke = 14;
+  const r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const total = segments.reduce((sum, s) => sum + Math.max(0, s.value), 0);
+
+  let offset = 0;
+  const arcs = segments.map((s) => {
+    const share = total > 0 ? Math.max(0, s.value) / total : 0;
+    const arc = { ...s, share, length: circ * share, offset };
+    offset += arc.length;
+    return arc;
+  });
+
+  return (
+    <div className="flex shrink-0 flex-col items-center gap-3">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={label}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#F0F2F5" strokeWidth={stroke} />
+        {arcs.map((a) => (
+          <circle
+            key={a.label}
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            fill="none"
+            stroke={a.color}
+            strokeWidth={stroke}
+            strokeDasharray={`${a.length} ${circ - a.length}`}
+            strokeDashoffset={-a.offset}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            style={{
+              transition:
+                "stroke-dasharray 0.6s cubic-bezier(0.2,0.8,0.2,1), stroke-dashoffset 0.6s cubic-bezier(0.2,0.8,0.2,1)",
+            }}
+          />
+        ))}
+      </svg>
+      <ul className="flex flex-col gap-1">
+        {arcs.map((a) => (
+          <li key={a.label} className="flex items-center gap-2 text-xs text-muted">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: a.color }} />
+            <span>{a.label}</span>
+            <span className="ml-auto pl-3 font-medium text-ink">{Math.round(a.share * 100)}%</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
+
 export const TypeBadge = ({ type }: { type: TransactionType }) => {
   const meta = TYPE_META[type];
   return (

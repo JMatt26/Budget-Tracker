@@ -292,6 +292,12 @@ const TYPE_FILTERS: { value: "" | "income" | "expense" | "investment"; label: st
                       <span className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
                         <span>{tx.category?.name ?? "Uncategorized"}</span>
                         <span aria-hidden="true">·</span>
+                        {tx.payment_method && (
+                          <>
+                            <span>{tx.payment_method}</span>
+                            <span aria-hidden="true">·</span>
+                          </>
+                        )}
                         {tx.budget ? (
                           <button
                             className="font-medium text-accent hover:text-accent-hover"

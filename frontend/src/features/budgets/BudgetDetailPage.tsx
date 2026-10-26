@@ -1,9 +1,8 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, ComposedChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import clsx from "clsx";
-import { Card, CardHeader, Skeleton } from "../../components/ui/Card";
+import { Card, Skeleton } from "../../components/ui/Card";
 import { Button, IconButton } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
 import { Field, FormActions, FormError } from "../../components/ui/Field";
@@ -12,15 +11,24 @@ import { Icon } from "../../components/ui/Icon";
 import {
   CategoryAvatar,
   ProgressBar,
-  ProgressRing,
+  BreakdownRing,
   TONE_TEXT,
   TypeBadge,
   budgetTone,
 } from "../../components/ui/Progress";
-import { fetchBudget, fetchBudgetStatus } from "../../lib/budget-api";
+import { fetchBudget, fetchBudgetStatus, fetchExpenseBreakdown } from "../../lib/budget-api";
+import {
+  CategoryLimitsCard,
+  ExpenseBreakdownCard,
+  SpendingTimelineCard,
+  toBreakdownRows,
+  type LimitRow,
+  type TimelinePoint,
+} from "./BudgetCharts";
 import { api } from "../../lib/api";
 import { categoryColor, formatMoney, formatSignedMoney, TYPE_META } from "../../lib/format";
-import type { Category, BudgetCategory, Transaction, Budget } from "../../lib/types";
+import { PAYMENT_METHODS } from "../../lib/types";
+import type { Category, BudgetCategory, Transaction, Budget, PaymentMethod } from "../../lib/types";
 
 const formatCurrency = formatMoney;
 
@@ -275,6 +283,7 @@ type BudgetTransactionFormData = {
   type: "income" | "expense" | "investment";
   category_id: string;
   description: string;
+  payment_method: PaymentMethod | "";
 };
 
 const BudgetTransactionForm = ({
@@ -291,6 +300,7 @@ const BudgetTransactionForm = ({
     type: "expense",
     category_id: "",
     description: "",
+    payment_method: "",
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -305,6 +315,7 @@ const BudgetTransactionForm = ({
         date: data.date,
         amount: Number(data.amount),
         type: data.type,
+        payment_method: data.type === "expense" ? data.payment_method : null,
         description: data.description.trim() || null,
         category_id: data.category_id ? Number(data.category_id) : null,
         budget_id: budgetId,
@@ -339,6 +350,10 @@ const BudgetTransactionForm = ({
       setError("Amount must be greater than 0");
       return;
     }
+    if (formData.type === "expense" && !formData.payment_method) {
+      setError("Choose a payment method");
+      return;
+    }
 
     mutation.mutate(formData);
   };
@@ -353,6 +368,25 @@ const BudgetTransactionForm = ({
           value={formData.type}
           onChange={(type) => setFormData({ ...formData, type })}
         />
+
+        {formData.type === "expense" && (
+          <Field label="Payment method">
+            <select
+              value={formData.payment_method}
+              onChange={(e) =>
+                setFormData({ ...formData, payment_method: e.target.value as PaymentMethod | "" })
+              }
+              className="field"
+            >
+              <option value="">Select…</option>
+              {PAYMENT_METHODS.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Date">
@@ -599,10 +633,53 @@ export const BudgetDetailPage: React.FC = () => {
     [budgetTransactions, sortBy, sortOrder]
   );
 
+  const periodControls = (
+    <div className="flex flex-wrap items-center gap-3">
+      <Segmented
+        label="Budget period"
+        options={[
+          { value: "monthly", label: "Monthly" },
+          { value: "weekly", label: "Weekly" },
+        ]}
+        value={periodView}
+        onChange={setPeriodView}
+      />
+      {periodView === "weekly" && selectedWeek && weekIndex !== null && (
+        <div className="flex items-center gap-1 rounded-xl border border-line bg-surface p-1">
+          <IconButton
+            label="Previous week"
+            onClick={() => setWeekIndex(Math.max(0, weekIndex - 1))}
+            disabled={weekIndex === 0}
+          >
+            <Icon name="chevronLeft" size={16} />
+          </IconButton>
+          <span className="min-w-[200px] text-center text-[13px] font-medium text-ink">
+            Week {weekIndex + 1} of {weekSegments.length} ·{" "}
+            <span className="font-normal text-muted">
+              {formatDate(selectedWeek.start)} – {formatDate(selectedWeek.end)}
+            </span>
+          </span>
+          <IconButton
+            label="Next week"
+            onClick={() =>
+              setWeekIndex(
+                Math.min(weekSegments.length - 1, weekIndex + 1)
+              )
+            }
+            disabled={weekIndex === weekSegments.length - 1}
+          >
+            <Icon name="chevronRight" size={16} />
+          </IconButton>
+        </div>
+      )}
+    </div>
+  );
+
   const renderNumeric = () => {
     const totalExpense = Number(status?.total_expense ?? 0);
     const totalInvested = Number(status?.total_investment ?? 0);
-    const totalSaved = Number(status?.total_income ?? 0);
+    const totalEarned = Number(status?.total_income ?? 0);
+    const totalSaved = totalEarned - totalExpense - totalInvested;
     const remaining = Number(status?.remaining ?? 0);
     const limit = status
       ? Number(status.period_limit ?? 0)
@@ -611,16 +688,16 @@ export const BudgetDetailPage: React.FC = () => {
       : 0;
     const progress = limit ? (totalExpense / limit) * 100 : 0;
     const tone = status?.exceeded ? "over" : budgetTone(totalExpense, limit);
-    const currentWeek =
-      periodView === "weekly" && weekIndex !== null
-        ? weekSegments[weekIndex]
-        : null;
-
     const stats = [
       { label: "Limit", value: formatCurrency(limit), color: "text-ink" },
       { label: "Spent", value: formatCurrency(totalExpense), color: "text-spend" },
       { label: "Invested", value: formatCurrency(totalInvested), color: "text-invest" },
-      { label: "Saved", value: formatCurrency(totalSaved), color: "text-saved" },
+      { label: "Earned", value: formatCurrency(totalEarned), color: "text-saved" },
+      {
+        label: "Saved",
+        value: formatCurrency(totalSaved),
+        color: totalSaved < 0 ? "text-spend" : "text-saved",
+      },
       {
         label: "Remaining",
         value: formatCurrency(remaining),
@@ -630,57 +707,22 @@ export const BudgetDetailPage: React.FC = () => {
 
     return (
       <div className="flex flex-col gap-5">
-        <div className="flex flex-wrap items-center gap-3">
-          <Segmented
-            label="Budget period"
-            options={[
-              { value: "monthly", label: "Monthly" },
-              { value: "weekly", label: "Weekly" },
-            ]}
-            value={periodView}
-            onChange={setPeriodView}
-          />
-          {periodView === "weekly" && currentWeek && weekIndex !== null && (
-            <div className="flex items-center gap-1 rounded-xl border border-line bg-surface p-1">
-              <IconButton
-                label="Previous week"
-                onClick={() => setWeekIndex(Math.max(0, weekIndex - 1))}
-                disabled={weekIndex === 0}
-              >
-                <Icon name="chevronLeft" size={16} />
-              </IconButton>
-              <span className="min-w-[200px] text-center text-[13px] font-medium text-ink">
-                Week {weekIndex + 1} of {weekSegments.length} ·{" "}
-                <span className="font-normal text-muted">
-                  {formatDate(currentWeek.start)} – {formatDate(currentWeek.end)}
-                </span>
-              </span>
-              <IconButton
-                label="Next week"
-                onClick={() =>
-                  setWeekIndex(
-                    Math.min(weekSegments.length - 1, weekIndex + 1)
-                  )
-                }
-                disabled={weekIndex === weekSegments.length - 1}
-              >
-                <Icon name="chevronRight" size={16} />
-              </IconButton>
-            </div>
-          )}
-        </div>
+        {periodControls}
 
         <Card className="flex flex-wrap items-center gap-8 sm:p-7">
-          <ProgressRing
-            value={progress}
-            tone={tone}
-            label={`${Math.round(progress)} percent of the budget used`}
+          <BreakdownRing
+            label="Share of spent, invested and saved"
+            segments={[
+              { label: "Spent", value: totalExpense, color: "#C2410C" },
+              { label: "Invested", value: totalInvested, color: "#6741D9" },
+              { label: "Saved", value: totalSaved, color: "#0E7A6B" },
+            ]}
           />
-          <div className="grid min-w-[260px] flex-1 grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="grid min-w-[260px] flex-1 grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-6">
             {stats.map((s) => (
-              <div key={s.label} className="flex flex-col gap-1">
+              <div key={s.label} className="flex min-w-0 flex-col gap-1">
                 <span className="text-xs text-muted">{s.label}</span>
-                <span className={clsx("text-xl font-semibold tracking-tight", s.color)}>
+                <span className={clsx("truncate text-base font-semibold tracking-tight", s.color)}>
                   {s.value}
                 </span>
               </div>
@@ -868,219 +910,126 @@ export const BudgetDetailPage: React.FC = () => {
     );
   };
 
-  const graphsContent = (
-    <Card>
-      <CardHeader title={`${budget ? budget.name : "Budget"} timeline`} />
-      <div className="space-y-3 text-[13px] text-muted">
-        <div className="flex items-center gap-3">
-          <div className="h-2 w-1/2 rounded-full bg-saved/60" />
-          <span>Projected spending curve</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="h-2 w-1/3 rounded-full bg-spend/60" />
-          <span>Actual spend line</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="h-2 w-1/4 rounded-full bg-invest/60" />
-          <span>Investment savings</span>
-        </div>
-      </div>
-    </Card>
+  const periodEnabled =
+    !Number.isNaN(budgetId) && (periodView === "monthly" || !!selectedWeek);
+  const periodParams = selectedWeek
+    ? { start_date: selectedWeek.start, end_date: selectedWeek.end }
+    : undefined;
+
+  // Keyed under "budget-status" / "budget-categories" so the existing
+  // invalidations after a transaction change refresh these too.
+  const { data: breakdown } = useQuery({
+    queryKey: ["budget-status", budgetId, "breakdown", selectedWeek?.start ?? null, selectedWeek?.end ?? null],
+    queryFn: () => fetchExpenseBreakdown(budgetId, periodParams),
+    enabled: periodEnabled && activeTab === "charts",
+  });
+
+  const { data: periodCategories } = useQuery({
+    queryKey: ["budget-categories", budgetId, "period", selectedWeek?.start ?? null, selectedWeek?.end ?? null],
+    queryFn: async () => {
+      const { data } = await api.get<BudgetCategory[]>(`/budgets/${budgetId}/categories`, {
+        params: periodParams,
+      });
+      return data;
+    },
+    enabled: periodEnabled && activeTab === "charts",
+  });
+
+  const periodLabel = selectedWeek
+    ? `${formatDate(selectedWeek.start)} – ${formatDate(selectedWeek.end)}`
+    : budget
+    ? `${formatDate(budget.start_date)} – ${formatDate(budget.end_date)}`
+    : "";
+
+  const breakdownRows = useMemo(
+    () => toBreakdownRows(breakdown?.items ?? []),
+    [breakdown]
   );
 
-  const chartsContent = useMemo(() => {
-    // Prepare data for pie chart - expense breakdown by category
-    const categorizedSpending = budgetCategories
-      ?.filter((bc) => Number(bc.actual_spending) > 0) // Only show categories with spending
+  const limitRows = useMemo<LimitRow[]>(() => {
+    if (!budget || !periodCategories) return [];
+    // Category limits are for the whole budget; a week gets its share of it.
+    const dayMs = 86_400_000;
+    const totalDays =
+      Math.round(
+        (new Date(`${budget.end_date.slice(0, 10)}T00:00:00`).getTime() -
+          new Date(`${budget.start_date.slice(0, 10)}T00:00:00`).getTime()) /
+          dayMs
+      ) + 1;
+    const periodDays = selectedWeek
+      ? Math.round(
+          (new Date(`${selectedWeek.end}T00:00:00`).getTime() -
+            new Date(`${selectedWeek.start}T00:00:00`).getTime()) /
+            dayMs
+        ) + 1
+      : totalDays;
+    const scale = totalDays > 0 ? periodDays / totalDays : 1;
+    return periodCategories
       .map((bc) => ({
+        key: String(bc.id),
         name: bc.category.name,
-        value: Number(bc.actual_spending),
-        limit: Number(bc.limit),
-        percentage: status?.total_expense
-          ? ((Number(bc.actual_spending) / Number(status.total_expense)) * 100).toFixed(1)
-          : "0",
-      })) || [];
+        color: categoryColor(bc.category),
+        spent: Number(bc.actual_spending),
+        limit: Number(bc.limit) * scale,
+      }))
+      .sort((a, b) => b.spent / (b.limit || 1) - a.spent / (a.limit || 1));
+  }, [budget, periodCategories, selectedWeek]);
 
-    // Calculate uncategorized spending (transactions linked to budget but without a category)
-    const totalCategorizedSpending = categorizedSpending.reduce(
-      (sum, item) => sum + item.value,
-      0
-    );
-    const totalExpense = Number(status?.total_expense || 0);
-    const uncategorizedSpending = totalExpense - totalCategorizedSpending;
+  const timelinePoints = useMemo<TimelinePoint[]>(() => {
+    const startStr = status?.period_start ?? budget?.start_date.slice(0, 10);
+    const endStr = status?.period_end ?? budget?.end_date.slice(0, 10);
+    if (!startStr || !endStr) return [];
 
-    // Build chart data including uncategorized if it exists
-    const chartData = [...categorizedSpending];
-    if (uncategorizedSpending > 0) {
-      chartData.push({
-        name: "Uncategorized",
-        value: uncategorizedSpending,
-        limit: 0, // No limit for uncategorized
-        percentage: status?.total_expense
-          ? ((uncategorizedSpending / totalExpense) * 100).toFixed(1)
-          : "0",
-      });
+    const spentByDay: Record<string, number> = {};
+    const investedByDay: Record<string, number> = {};
+    for (const tx of budgetTransactions?.items ?? []) {
+      const day = tx.date.slice(0, 10);
+      if (day < startStr || day > endStr) continue;
+      if (tx.type === "expense") spentByDay[day] = (spentByDay[day] ?? 0) + Number(tx.amount);
+      if (tx.type === "investment") investedByDay[day] = (investedByDay[day] ?? 0) + Number(tx.amount);
     }
 
-    // Color palette for the pie chart
-    const COLORS = [
-      "#3451D1",
-      "#0E7A6B",
-      "#C2410C",
-      "#6741D9",
-      "#B45309",
-      "#A21CAF",
-      "#0369A1",
-      "#15803D",
-      "#BE123C",
-      "#475467",
-    ];
+    const days: string[] = [];
+    for (let d = new Date(`${startStr}T00:00:00`); formatLocalDate(d) <= endStr; d.setDate(d.getDate() + 1)) {
+      days.push(formatLocalDate(d));
+    }
 
-    const CustomTooltip = ({ active, payload }: any) => {
-      if (active && payload && payload.length) {
-        const data = payload[0];
-        return (
-          <div className="rounded-xl border border-line bg-surface p-3 shadow-lift">
-            <p className="text-sm font-semibold text-ink">{data.name}</p>
-            <p className="mt-1 text-xs text-ink-2">
-              Spent: {formatCurrency(data.value)}
-            </p>
-            {data.payload.limit > 0 && (
-              <p className="text-xs text-ink-2">
-                Limit: {formatCurrency(data.payload.limit)}
-              </p>
-            )}
-            <p className="mt-1 text-xs text-muted">
-              {data.payload.percentage}% of total
-            </p>
-          </div>
-        );
-      }
-      return null;
-    };
+    const periodLimit = Number(status?.period_limit ?? 0);
+    let spent = 0;
+    let invested = 0;
+    return days.map((day, i) => {
+      spent += spentByDay[day] ?? 0;
+      invested += investedByDay[day] ?? 0;
+      return {
+        date: day,
+        label: new Date(`${day}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+        spent: Math.round(spent * 100) / 100,
+        invested: Math.round(invested * 100) / 100,
+        pace: Math.round(((periodLimit * (i + 1)) / days.length) * 100) / 100,
+      };
+    });
+  }, [status, budget, budgetTransactions]);
 
+  const graphsContent = (
+    <div className="flex flex-col gap-5">
+      {periodControls}
+      <SpendingTimelineCard
+        title="Spending timeline"
+        subtitle={`Running total, ${periodLabel}`}
+        points={timelinePoints}
+      />
+    </div>
+  );
 
-    return (
-      <div className="grid gap-5 md:grid-cols-2">
-        <Card>
-          <CardHeader title="Expense breakdown by category" />
-          {chartData.length > 0 ? (
-            <div className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={chartData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={52}
-                    outerRadius={86}
-                    paddingAngle={2}
-                    stroke="none"
-                    dataKey="value"
-                  >
-                    {chartData.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={COLORS[index % COLORS.length]}
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend
-                    wrapperStyle={{ fontSize: "12px" }}
-                    formatter={(value, entry: any) => (
-                      <span className="text-ink-2">
-                        {value}: {formatCurrency(entry.payload.value)}
-                      </span>
-                    )}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <div className="flex h-64 items-center justify-center">
-              <p className="text-center text-sm text-muted">
-                No spending data available yet. Add categories and transactions to see the breakdown.
-              </p>
-            </div>
-          )}
-        </Card>
-        <Card>
-          <CardHeader title="Category spending vs limits" />
-          {budgetCategories && budgetCategories.length > 0 ? (
-            <div className="h-80 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart
-                  data={budgetCategories.map((bc) => ({
-                    name: bc.category.name.length > 15
-                      ? bc.category.name.substring(0, 15) + "..."
-                      : bc.category.name,
-                    limit: Number(bc.limit),
-                    spent: Number(bc.actual_spending),
-                    fullName: bc.category.name, // Keep full name for tooltip
-                  }))}
-                  margin={{ top: 5, right: 20, left: 0, bottom: 60 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E4E7EC" vertical={false} />
-                  <XAxis
-                    dataKey="name"
-                    tick={{ fill: "#5B6474", fontSize: 11 }}
-                    angle={-45}
-                    textAnchor="end"
-                    height={80}
-                    axisLine={{ stroke: "#E4E7EC" }}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tick={{ fill: "#5B6474", fontSize: 11 }}
-                    tickFormatter={(value) => `$${value.toFixed(0)}`}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip
-                    cursor={{ fill: "#F5F6F8" }}
-                    contentStyle={{
-                      backgroundColor: "#FFFFFF",
-                      border: "1px solid #E4E7EC",
-                      borderRadius: "12px",
-                      boxShadow: "0 8px 24px rgba(16,24,40,0.08)",
-                    }}
-                    formatter={(value: number, name: string) => [
-                      formatCurrency(value),
-                      name === "limit" ? "Limit" : "Spent",
-                    ]}
-                    labelFormatter={(label, payload) =>
-                      payload && payload[0] ? payload[0].payload.fullName : label
-                    }
-                  />
-                  {/* Background bar for limit (shaded, rendered first so it's behind) */}
-                  <Bar
-                    dataKey="limit"
-                    fill="#3451D1"
-                    opacity={0.18}
-                    radius={[6, 6, 0, 0]}
-                    isAnimationActive={false}
-                  />
-                  {/* Foreground bar for spent (brighter, rendered second so it overlays on top) */}
-                  <Bar
-                    dataKey="spent"
-                    fill="#3451D1"
-                    radius={[6, 6, 0, 0]}
-                  />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <div className="flex h-64 items-center justify-center">
-              <p className="text-center text-sm text-muted">
-                No categories added yet. Add categories to see spending vs limits.
-              </p>
-            </div>
-          )}
-        </Card>
+  const chartsContent = (
+    <div className="flex flex-col gap-5">
+      {periodControls}
+      <div className="grid items-start gap-5 2xl:grid-cols-2">
+        <ExpenseBreakdownCard rows={breakdownRows} subtitle={periodLabel} />
+        <CategoryLimitsCard rows={limitRows} subtitle={selectedWeek ? "Limits shown as this week's share" : periodLabel} />
       </div>
-    );
-  }, [budgetCategories, status]);
+    </div>
+  );
 
   if (Number.isNaN(budgetId)) {
     return (

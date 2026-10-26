@@ -81,3 +81,24 @@ export const updateBudgetTargets = async (
   const { data } = await api.put<BudgetTargets>(`/budgets/${id}/targets`, targets);
   return data;
 };
+
+export type BudgetCycle = {
+  id: number;
+  name: string;
+  start_date: string;
+  end_date: string;
+  is_current: boolean;
+  total_expense: number | string;
+  total_investment: number | string;
+  total_income: number | string;
+};
+
+export type BudgetHistory = {
+  current_id: number;
+  items: BudgetCycle[]; // newest first, including the current cycle
+};
+
+export const fetchBudgetHistory = async (id: number): Promise<BudgetHistory> => {
+  const { data } = await api.get<BudgetHistory>(`/budgets/${id}/history`);
+  return data;
+};

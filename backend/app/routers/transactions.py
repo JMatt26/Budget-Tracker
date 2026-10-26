@@ -8,8 +8,23 @@ from datetime import date
 from .. import models, schemas
 from ..db import get_db
 from ..auth import get_current_user
+from ..budget_cycles import cycle_for_date, roll_over_budgets
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
+
+
+def _budget_cycle_id(db: Session, user_id: int, budget_id: Optional[int], tx_date: date) -> Optional[int]:
+    """A transaction linked to a recurring budget belongs to the cycle that
+    covers its date, so it doesn't land in an old (or the wrong) cycle."""
+    if budget_id is None:
+        return None
+    roll_over_budgets(db, user_id)
+    budget = (
+        db.query(models.Budget)
+        .filter(models.Budget.id == budget_id, models.Budget.user_id == user_id)
+        .first()
+    )
+    return cycle_for_date(db, budget, tx_date).id if budget else budget_id
 
 
 @router.post(
@@ -38,6 +53,7 @@ def create_transaction(
             )
 
     tx_data = tx_in.model_dump()
+    tx_data["budget_id"] = _budget_cycle_id(db, current_user.id, tx_in.budget_id, tx_in.date)
     tx = models.Transaction(**tx_data, user_id=current_user.id)
 
     db.add(tx)
@@ -163,6 +179,14 @@ def update_transaction(
             )
     else:
         update_data["payment_method"] = None
+
+    if "budget_id" in update_data or "date" in update_data:
+        update_data["budget_id"] = _budget_cycle_id(
+            db,
+            current_user.id,
+            update_data.get("budget_id", tx.budget_id),
+            update_data.get("date", tx.date),
+        )
 
     for field, value in update_data.items():
         setattr(tx, field, value)

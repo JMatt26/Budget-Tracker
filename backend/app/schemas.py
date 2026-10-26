@@ -59,10 +59,14 @@ class SummaryResponse(BaseModel):
     by_category: Optional[List[CategorySummaryItem]] = None
 
 
+Recurrence = Literal["weekly", "monthly"]
+
+
 class BudgetBase(BaseModel):
     name: str = Field(..., max_length=100)
     start_date: DateType
     end_date: DateType
+    recurrence: Optional[Recurrence] = None
 
 
 class BudgetCreate(BudgetBase):
@@ -73,10 +77,12 @@ class BudgetUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=100)
     start_date: Optional[DateType] = None
     end_date: Optional[DateType] = None
+    recurrence: Optional[Recurrence] = None
 
 
 class BudgetCore(BudgetBase):
     id: int
+    series_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 
@@ -98,6 +104,22 @@ class BudgetStatus(BaseModel):
     total_income: Decimal
     remaining: Decimal
     exceeded: bool
+
+
+class BudgetCycle(BaseModel):
+    id: int
+    name: str
+    start_date: DateType
+    end_date: DateType
+    is_current: bool
+    total_expense: Decimal
+    total_investment: Decimal
+    total_income: Decimal
+
+
+class BudgetHistory(BaseModel):
+    current_id: int
+    items: List[BudgetCycle]  # newest first, including the current cycle
 
 
 class ExpenseBreakdownItem(BaseModel):

@@ -18,6 +18,7 @@ import {
 } from "../../components/ui/Progress";
 import {
   fetchBudget,
+  fetchBudgetHistory,
   fetchBudgetStatus,
   fetchBudgetTargets,
   fetchExpenseBreakdown,
@@ -46,7 +47,14 @@ import {
 import { api } from "../../lib/api";
 import { categoryColor, formatMoney, formatSignedMoney, TYPE_META } from "../../lib/format";
 import { PAYMENT_METHODS } from "../../lib/types";
-import type { Category, BudgetCategory, Transaction, Budget, PaymentMethod } from "../../lib/types";
+import type {
+  Category,
+  BudgetCategory,
+  BudgetRecurrence,
+  Transaction,
+  Budget,
+  PaymentMethod,
+} from "../../lib/types";
 
 const formatCurrency = formatMoney;
 
@@ -479,13 +487,14 @@ const BudgetTransactionForm = ({
   );
 };
 
-type TabKey = "numeric" | "targets" | "graphs" | "charts";
+type TabKey = "numeric" | "targets" | "graphs" | "charts" | "history";
 
 const tabLabels: Record<TabKey, string> = {
   numeric: "Overview",
   targets: "Targets",
   graphs: "Graphs",
   charts: "Charts",
+  history: "Historic View",
 };
 
 // The targets endpoint returns decimals as strings; null means no target.
@@ -495,7 +504,14 @@ const targetValue = (targets: BudgetTargets | undefined, metric: TargetMetric): 
   return raw == null ? null : Number(raw);
 };
 
+// Keyed by budget so switching to another cycle from Historic View starts
+// fresh (Overview tab, current week) instead of carrying over this one's state.
 export const BudgetDetailPage: React.FC = () => {
+  const { budgetId } = useParams();
+  return <BudgetDetailView key={budgetId} />;
+};
+
+const BudgetDetailView: React.FC = () => {
   const params = useParams();
   const budgetId = Number(params.budgetId ?? "");
   const navigate = useNavigate();
@@ -595,6 +611,14 @@ export const BudgetDetailPage: React.FC = () => {
     },
     enabled: !Number.isNaN(budgetId) && !!budget,
   });
+
+  // Keyed under "budget-status" so transaction changes refresh the totals.
+  const { data: history } = useQuery({
+    queryKey: ["budget-status", budgetId, "history"],
+    queryFn: () => fetchBudgetHistory(budgetId),
+    enabled: !Number.isNaN(budgetId),
+  });
+  const isPastCycle = !!history && history.current_id !== budgetId;
 
   const queryClient = useQueryClient();
 
@@ -1245,6 +1269,82 @@ export const BudgetDetailPage: React.FC = () => {
     </div>
   );
 
+  const renderHistory = () => {
+    const cycles = history?.items ?? [];
+    const past = cycles.filter((c) => !c.is_current);
+    const unit = budget?.recurrence === "weekly" ? "week" : "month";
+
+    return (
+      <Card>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold text-ink">Previous cycles</h2>
+          <p className="mt-0.5 text-sm text-muted">
+            {budget?.recurrence
+              ? `This budget resets every ${unit}. Pick a past ${unit} to see its data.`
+              : "Pick a past cycle to see its data."}
+          </p>
+        </div>
+        {past.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted">
+            {budget?.recurrence
+              ? `No past ${unit}s yet. When this ${unit} ends, it will show up here.`
+              : 'This budget doesn\'t repeat. Set it to repeat weekly or monthly in "Edit budget" and each finished cycle will show up here.'}
+          </p>
+        ) : (
+          <div className="flex flex-col">
+            {cycles.map((cycle) => {
+              const spent = Number(cycle.total_expense);
+              const invested = Number(cycle.total_investment);
+              const saved = Number(cycle.total_income) - spent - invested;
+              const viewing = cycle.id === budgetId;
+              return (
+                <button
+                  key={cycle.id}
+                  type="button"
+                  onClick={() => navigate(`/budgets/${cycle.id}`)}
+                  disabled={viewing}
+                  className={clsx(
+                    "-mx-3 grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1 rounded-xl px-3 py-3.5 text-left transition sm:grid-cols-[minmax(180px,1fr)_repeat(3,minmax(90px,auto))_20px]",
+                    viewing ? "bg-accent-soft" : "hover:bg-canvas"
+                  )}
+                >
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate text-sm font-medium text-ink">
+                      {formatDate(cycle.start_date)} – {formatDate(cycle.end_date)}
+                    </span>
+                    <span className="text-xs text-muted">
+                      {cycle.is_current ? "Current" : viewing ? "Viewing" : cycle.name}
+                    </span>
+                  </span>
+                  <span className="hidden flex-col items-end sm:flex">
+                    <span className="text-xs text-muted">Spent</span>
+                    <span className="text-sm font-semibold text-spend">{formatCurrency(spent)}</span>
+                  </span>
+                  <span className="hidden flex-col items-end sm:flex">
+                    <span className="text-xs text-muted">Invested</span>
+                    <span className="text-sm font-semibold text-invest">{formatCurrency(invested)}</span>
+                  </span>
+                  <span className="hidden flex-col items-end sm:flex">
+                    <span className="text-xs text-muted">Saved</span>
+                    <span className={clsx("text-sm font-semibold", saved < 0 ? "text-spend" : "text-saved")}>
+                      {formatCurrency(saved)}
+                    </span>
+                  </span>
+                  <span className="text-right text-xs text-muted sm:hidden">
+                    {formatCurrency(spent)} spent
+                  </span>
+                  <span className="hidden text-muted sm:block">
+                    {!viewing && <Icon name="chevronRight" size={16} />}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+    );
+  };
+
   if (Number.isNaN(budgetId)) {
     return (
       <Card>
@@ -1279,6 +1379,7 @@ export const BudgetDetailPage: React.FC = () => {
             )}
           </div>
         </div>
+        {!isPastCycle && (
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => setShowCategoryForm(true)}>
             <Icon name="plus" size={16} />
@@ -1296,7 +1397,9 @@ export const BudgetDetailPage: React.FC = () => {
             onClick={() => {
               if (
                 window.confirm(
-                  `Are you sure you want to delete "${budget?.name}"? This will remove the budget association from all transactions.`
+                  budget?.recurrence
+                    ? `Are you sure you want to delete "${budget.name}" and all of its past cycles? This will remove the budget association from their transactions.`
+                    : `Are you sure you want to delete "${budget?.name}"? This will remove the budget association from all transactions.`
                 )
               ) {
                 deleteBudgetMutation.mutate(budgetId);
@@ -1308,7 +1411,21 @@ export const BudgetDetailPage: React.FC = () => {
             {deleteBudgetMutation.isPending ? "Deleting..." : "Delete"}
           </Button>
         </div>
+        )}
       </div>
+
+      {isPastCycle && history && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-accent/30 bg-accent-soft px-4 py-3">
+          <p className="text-sm text-ink">
+            <span className="font-medium">Historic view.</span>{" "}
+            <span className="text-muted">You're looking at a past cycle of this budget.</span>
+          </p>
+          <Button size="sm" variant="secondary" onClick={() => navigate(`/budgets/${history.current_id}`)}>
+            Back to current
+            <Icon name="arrowRight" size={15} />
+          </Button>
+        </div>
+      )}
 
       <Tabs
         label="Budget views"
@@ -1328,6 +1445,7 @@ export const BudgetDetailPage: React.FC = () => {
           {activeTab === "targets" && renderTargets()}
           {activeTab === "graphs" && graphsContent}
           {activeTab === "charts" && chartsContent}
+          {activeTab === "history" && renderHistory()}
         </div>
       )}
 
@@ -1395,6 +1513,7 @@ const EditBudgetForm = ({
     name: budget.name,
     startDate: budget.start_date.slice(0, 10),
     endDate: budget.end_date.slice(0, 10),
+    recurrence: (budget.recurrence ?? "") as BudgetRecurrence | "",
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -1410,13 +1529,16 @@ const EditBudgetForm = ({
       if (formData.endDate !== budget.end_date.slice(0, 10)) {
         payload.end_date = formData.endDate;
       }
+      if (formData.recurrence !== (budget.recurrence ?? "")) {
+        payload.recurrence = formData.recurrence || null;
+      }
       const { data } = await api.put(`/budgets/${budget.id}`, payload);
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["budget", budget.id] });
       queryClient.invalidateQueries({ queryKey: ["budgets"] });
-      queryClient.invalidateQueries({ queryKey: ["budget-status", budget.id] });
+      queryClient.invalidateQueries({ queryKey: ["budget-status"] });
       onClose();
     },
     onError: (err: any) => {
@@ -1481,6 +1603,22 @@ const EditBudgetForm = ({
             />
           </Field>
         </div>
+        <Field
+          label="Repeats"
+          hint="A repeating budget resets when each cycle ends, keeping its category limits and targets. Past cycles stay in Historic View."
+        >
+          <select
+            value={formData.recurrence}
+            onChange={(e) =>
+              setFormData({ ...formData, recurrence: e.target.value as BudgetRecurrence | "" })
+            }
+            className="field"
+          >
+            <option value="">Doesn't repeat</option>
+            <option value="weekly">Every week</option>
+            <option value="monthly">Every month</option>
+          </select>
+        </Field>
         {error && <FormError>{error}</FormError>}
         <FormActions>
           <Button variant="secondary" onClick={onClose}>

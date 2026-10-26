@@ -78,6 +78,11 @@ class Transaction(Base):
 
 class Budget(Base):
     __tablename__ = "budgets"
+    __table_args__ = (
+        # A series gets one cycle per start date, so concurrent requests that
+        # both roll a recurring budget over can't create duplicate cycles.
+        UniqueConstraint("series_id", "start_date", name="uq_budgets_series_start"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)

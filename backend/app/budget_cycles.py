@@ -5,12 +5,25 @@ cycle. When the current cycle has ended, a fresh cycle is created with the
 same name, category limits and targets, and the old one stays as history.
 """
 import calendar
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Dict, Optional
+from zoneinfo import ZoneInfo
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from . import models
+from .core.config import get_settings
+
+
+def today_local(now: Optional[datetime] = None) -> date:
+    """Today's date in the app's configured timezone (BUDGET_APP_TIMEZONE).
+
+    The server usually runs in UTC, so date.today() would roll a user's
+    budget over hours before their own midnight. `now` is for tests.
+    """
+    tz = ZoneInfo(get_settings().timezone)
+    return (now.astimezone(tz) if now else datetime.now(tz)).date()
 
 
 def _add_months(d: date, months: int) -> date:
@@ -77,18 +90,44 @@ def _start_next_cycle(db: Session, prev: models.Budget) -> models.Budget:
     return budget
 
 
+def _next_cycle_or_existing(db: Session, prev: models.Budget) -> models.Budget:
+    """Start prev's next cycle, or return it if a concurrent request already
+    did. The unique (series_id, start_date) constraint arbitrates the race."""
+    start, _ = next_cycle_dates(prev.end_date, prev.recurrence)
+    try:
+        with db.begin_nested():  # savepoint: a lost race must not poison the session
+            budget = _start_next_cycle(db, prev)
+            db.flush()
+            return budget
+    except IntegrityError:
+        existing = (
+            db.query(models.Budget)
+            .filter(
+                models.Budget.user_id == prev.user_id,
+                models.Budget.series_id == series_key(prev),
+                models.Budget.start_date == start,
+            )
+            .first()
+        )
+        if existing is None:
+            raise
+        return existing
+
+
 def roll_over_budgets(db: Session, user_id: int, today: Optional[date] = None) -> None:
     """Start new cycles for every recurring budget whose cycle has ended,
-    including any cycles that were skipped while nobody looked."""
-    today = today or date.today()
+    including any cycles that were skipped while nobody looked.
+
+    Safe to call from concurrent requests: each cycle is created at most once.
+    """
+    today = today or today_local()
     changed = False
     for budget in current_cycles(db, user_id).values():
         if budget.recurrence and budget.series_id is None:
             budget.series_id = budget.id
             changed = True
         while budget.recurrence and budget.end_date < today:
-            budget = _start_next_cycle(db, budget)
-            db.flush()
+            budget = _next_cycle_or_existing(db, budget)
             changed = True
     if changed:
         db.commit()

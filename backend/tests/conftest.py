@@ -1,3 +1,5 @@
+from datetime import date
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import StaticPool, create_engine
@@ -39,6 +41,16 @@ def clean_db():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     yield
+
+@pytest.fixture(autouse=True)
+def todays_date_is_the_machines(monkeypatch):
+    """The app decides "today" in its configured timezone, but these tests
+    build their dates from date.today(); keep the two equal so the suite
+    doesn't flake for a few hours each day when the machine (e.g. CI, in UTC)
+    and the app timezone are on different dates. The timezone logic itself is
+    tested with an injected clock in test_budget_cycles_safety.py."""
+    monkeypatch.setattr("app.budget_cycles.today_local", date.today)
+
 
 @pytest.fixture()
 def client():

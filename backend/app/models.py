@@ -108,6 +108,14 @@ class Budget(Base):
         cascade="all, delete-orphan",
     )
 
+    # one-to-one: optional spending/investing/saving goals for the budget
+    target = relationship(
+        "BudgetTarget",
+        back_populates="budget",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
 
 class BudgetCategory(Base):
     __tablename__ = "budget_categories"
@@ -129,6 +137,29 @@ class BudgetCategory(Base):
 
     budget = relationship("Budget", back_populates="budget_categories")
     category = relationship("Category", back_populates="budget_categories")
+
+
+class BudgetTarget(Base):
+    __tablename__ = "budget_targets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    budget_id = Column(Integer, ForeignKey("budgets.id"), unique=True, index=True, nullable=False)
+    # Goals for the whole budget period; null means no goal set
+    spending = Column(Numeric(10, 2), nullable=True)  # a ceiling: spend at most this
+    invested = Column(Numeric(10, 2), nullable=True)  # invest at least this
+    saved = Column(Numeric(10, 2), nullable=True)  # save at least this
+
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    budget = relationship("Budget", back_populates="target")
 
 
 class User(Base):

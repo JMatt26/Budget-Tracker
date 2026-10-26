@@ -219,14 +219,31 @@ export const CategoryLimitsCard = ({
 );
 
 // ---------------------------------------------------------------------------
-// Cumulative timeline: spending and investing against an even pace.
+// Cumulative timeline: spending and investing against an even pace. Days
+// after today are projected and drawn dotted.
 // ---------------------------------------------------------------------------
+
+// Dotted stroke used for everything projected past today.
+const PROJECTED_DASH = "1 6";
+const yTick = (v: number) => {
+  const abs = Math.abs(v);
+  const text = abs >= 1000 ? `$${(abs / 1000).toFixed(abs % 1000 === 0 ? 0 : 1)}k` : `$${abs}`;
+  return v < 0 ? `−${text}` : text;
+};
+
+const ProjectedKey = () => (
+  <span className="flex items-center gap-1.5">
+    <span className="h-0 w-4 border-t-2 border-dotted border-muted" /> Projected
+  </span>
+);
 
 export type TimelinePoint = {
   date: string; // YYYY-MM-DD
   label: string;
-  spent: number;
-  invested: number;
+  spent: number | null;
+  invested: number | null;
+  spentProjected: number | null;
+  investedProjected: number | null;
   pace: number;
 };
 
@@ -239,7 +256,8 @@ export const SpendingTimelineCard = ({
   title: string;
   subtitle?: string;
 }) => {
-  const hasActivity = points.some((p) => p.spent > 0 || p.invested > 0);
+  const hasActivity = points.some((p) => (p.spent ?? 0) > 0 || (p.invested ?? 0) > 0);
+  const hasProjection = points.some((p) => p.spent === null);
   return (
     <Card>
       <CardHeader title={title} subtitle={subtitle} />
@@ -257,6 +275,7 @@ export const SpendingTimelineCard = ({
             <span className="flex items-center gap-1.5">
               <span className="h-0 w-4 border-t-2 border-dashed border-muted/70" /> Even pace to limit
             </span>
+            {hasProjection && <ProjectedKey />}
           </div>
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -276,22 +295,17 @@ export const SpendingTimelineCard = ({
                   minTickGap={24}
                   tickMargin={8}
                 />
-                <YAxis
-                  tick={AXIS_TICK}
-                  tickLine={false}
-                  axisLine={false}
-                  width={52}
-                  tickFormatter={(v: number) => (v >= 1000 ? `$${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k` : `$${v}`)}
-                />
+                <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} width={52} tickFormatter={yTick} />
                 <Tooltip
                   cursor={{ stroke: "#98A2B3", strokeDasharray: "3 3" }}
                   content={({ active, payload }) => {
                     if (!active || !payload?.length) return null;
                     const p = payload[0].payload as TimelinePoint;
+                    const projected = p.spent === null;
                     return (
-                      <TooltipShell title={p.label}>
-                        <TooltipRow color="#C2410C" label="Spent" value={formatMoney(p.spent)} />
-                        <TooltipRow color="#6741D9" label="Invested" value={formatMoney(p.invested)} />
+                      <TooltipShell title={projected ? `${p.label} · projected` : p.label}>
+                        <TooltipRow color="#C2410C" label="Spent" value={formatMoney(p.spent ?? p.spentProjected ?? 0)} />
+                        <TooltipRow color="#6741D9" label="Invested" value={formatMoney(p.invested ?? p.investedProjected ?? 0)} />
                         <TooltipRow color="#98A2B3" label="Even pace" value={formatMoney(p.pace)} />
                       </TooltipShell>
                     );
@@ -317,6 +331,16 @@ export const SpendingTimelineCard = ({
                   animationDuration={700}
                 />
                 <Line
+                  dataKey="spentProjected"
+                  stroke="#C2410C"
+                  strokeWidth={2.5}
+                  strokeDasharray={PROJECTED_DASH}
+                  strokeLinecap="round"
+                  dot={false}
+                  activeDot={false}
+                  isAnimationActive={false}
+                />
+                <Line
                   dataKey="invested"
                   type="monotone"
                   stroke="#6741D9"
@@ -325,11 +349,199 @@ export const SpendingTimelineCard = ({
                   activeDot={{ r: 5, strokeWidth: 2, stroke: "#fff" }}
                   animationDuration={700}
                 />
+                <Line
+                  dataKey="investedProjected"
+                  stroke="#6741D9"
+                  strokeWidth={2.5}
+                  strokeDasharray={PROJECTED_DASH}
+                  strokeLinecap="round"
+                  dot={false}
+                  activeDot={false}
+                  isAnimationActive={false}
+                />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
         </>
       )}
+    </Card>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// One metric (spent, invested or saved) against its target: clickable tiles
+// pick the metric, the chart shows actual vs an even pace to the target.
+// ---------------------------------------------------------------------------
+
+export type MetricTile = {
+  key: string;
+  label: string;
+  color: string;
+  actual: number;
+  projected: number;
+  target: number | null;
+};
+
+export const MetricTiles = ({
+  tiles,
+  selected,
+  onSelect,
+}: {
+  tiles: MetricTile[];
+  selected: string;
+  onSelect: (key: string) => void;
+}) => (
+  <div role="group" aria-label="Metric" className="grid gap-3 sm:grid-cols-3">
+    {tiles.map((t) => {
+      const active = t.key === selected;
+      return (
+        <button
+          key={t.key}
+          type="button"
+          aria-pressed={active}
+          onClick={() => onSelect(t.key)}
+          className={clsx(
+            "flex flex-col gap-1 rounded-2xl border bg-surface p-4 text-left transition",
+            active ? "shadow-pop" : "border-line hover:border-muted/40"
+          )}
+          style={active ? { borderColor: t.color, boxShadow: `0 0 0 1px ${t.color}` } : undefined}
+        >
+          <span className="flex items-center gap-1.5 text-xs font-medium text-muted">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: t.color }} />
+            {t.label}
+          </span>
+          <span className="text-lg font-semibold tracking-tight text-ink">
+            {formatMoney(t.actual)}
+            <span className="text-sm font-normal text-muted">
+              {" "}
+              / {t.target != null ? formatMoney(t.target) : "no target"}
+            </span>
+          </span>
+          <span className="text-xs text-muted">Projected {formatMoney(t.projected)}</span>
+        </button>
+      );
+    })}
+  </div>
+);
+
+export type MetricPoint = {
+  date: string;
+  label: string;
+  actual: number | null;
+  projected: number | null;
+  target: number | null;
+};
+
+export const MetricTargetCard = ({
+  points,
+  label,
+  color,
+  subtitle,
+  target,
+}: {
+  points: MetricPoint[];
+  label: string;
+  color: string;
+  subtitle?: string;
+  target: number | null;
+}) => {
+  const hasProjection = points.some((p) => p.actual === null);
+  const gradientId = `metricFill-${label}`;
+  return (
+    <Card>
+      <CardHeader
+        title={`${label} vs target`}
+        subtitle={subtitle}
+        action={
+          target == null ? (
+            <span className="text-xs text-muted">Set a target in the Targets tab to compare.</span>
+          ) : undefined
+        }
+      />
+      <div className="mb-3 flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-muted">
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} /> Actual
+        </span>
+        {target != null && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-0 w-4 border-t-2 border-dashed border-muted/70" /> Even pace to target
+          </span>
+        )}
+        {hasProjection && <ProjectedKey />}
+      </div>
+      <div className="h-72 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={points} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={color} stopOpacity={0.24} />
+                <stop offset="100%" stopColor={color} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid stroke="#EEF0F3" vertical={false} />
+            <XAxis
+              dataKey="label"
+              tick={AXIS_TICK}
+              tickLine={false}
+              axisLine={{ stroke: "#E4E7EC" }}
+              minTickGap={24}
+              tickMargin={8}
+            />
+            <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} width={52} tickFormatter={yTick} />
+            <Tooltip
+              cursor={{ stroke: "#98A2B3", strokeDasharray: "3 3" }}
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null;
+                const p = payload[0].payload as MetricPoint;
+                const projected = p.actual === null;
+                return (
+                  <TooltipShell title={projected ? `${p.label} · projected` : p.label}>
+                    <TooltipRow
+                      color={color}
+                      label={projected ? "Projected" : label}
+                      value={formatMoney(p.actual ?? p.projected ?? 0)}
+                    />
+                    {p.target != null && (
+                      <TooltipRow color="#98A2B3" label="Target pace" value={formatMoney(p.target)} />
+                    )}
+                  </TooltipShell>
+                );
+              }}
+            />
+            {target != null && (
+              <Line
+                dataKey="target"
+                stroke="#98A2B3"
+                strokeWidth={1.5}
+                strokeDasharray="5 5"
+                dot={false}
+                activeDot={false}
+                isAnimationActive={false}
+              />
+            )}
+            <Area
+              dataKey="actual"
+              type="monotone"
+              stroke={color}
+              strokeWidth={2.5}
+              fill={`url(#${gradientId})`}
+              dot={false}
+              activeDot={{ r: 5, strokeWidth: 2, stroke: "#fff" }}
+              animationDuration={700}
+            />
+            <Line
+              dataKey="projected"
+              stroke={color}
+              strokeWidth={2.5}
+              strokeDasharray={PROJECTED_DASH}
+              strokeLinecap="round"
+              dot={false}
+              activeDot={{ r: 4, strokeWidth: 2, stroke: "#fff" }}
+              isAnimationActive={false}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
     </Card>
   );
 };

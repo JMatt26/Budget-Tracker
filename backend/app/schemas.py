@@ -136,6 +136,20 @@ class BudgetCategoryRead(BaseModel):
     updated_at: datetime
 
 
+class BudgetTargetUpdate(BaseModel):
+    # null clears a goal
+    spending: Optional[Decimal] = Field(None, max_digits=10, decimal_places=2, ge=0)
+    invested: Optional[Decimal] = Field(None, max_digits=10, decimal_places=2, ge=0)
+    saved: Optional[Decimal] = Field(None, max_digits=10, decimal_places=2, ge=0)
+
+
+class BudgetTargetRead(BaseModel):
+    budget_id: int
+    spending: Optional[Decimal] = None
+    invested: Optional[Decimal] = None
+    saved: Optional[Decimal] = None
+
+
 class UserBase(BaseModel):
     email: EmailStr
 

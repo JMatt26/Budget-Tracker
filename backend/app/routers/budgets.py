@@ -259,6 +259,57 @@ def get_budget_status(
     )
 
 
+def _get_owned_budget(db: Session, budget_id: int, user_id: int) -> models.Budget:
+    budget = (
+        db.query(models.Budget)
+        .filter(models.Budget.id == budget_id, models.Budget.user_id == user_id)
+        .first()
+    )
+    if budget is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Budget not found.",
+        )
+    return budget
+
+
+def _read_target(budget: models.Budget) -> schemas.BudgetTargetRead:
+    target = budget.target
+    return schemas.BudgetTargetRead(
+        budget_id=budget.id,
+        spending=target.spending if target else None,
+        invested=target.invested if target else None,
+        saved=target.saved if target else None,
+    )
+
+
+@router.get("/{budget_id}/targets", response_model=schemas.BudgetTargetRead)
+def get_budget_targets(
+    budget_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Spending/investing/saving goals for the whole budget period."""
+    return _read_target(_get_owned_budget(db, budget_id, current_user.id))
+
+
+@router.put("/{budget_id}/targets", response_model=schemas.BudgetTargetRead)
+def set_budget_targets(
+    budget_id: int,
+    target_in: schemas.BudgetTargetUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    budget = _get_owned_budget(db, budget_id, current_user.id)
+    if budget.target is None:
+        budget.target = models.BudgetTarget(budget_id=budget.id)
+    for field, value in target_in.model_dump(exclude_unset=True).items():
+        setattr(budget.target, field, value)
+    db.commit()
+    db.refresh(budget)
+    return _read_target(budget)
+
+
 @router.get(
     "/{budget_id}/expense-breakdown",
     response_model=schemas.ExpenseBreakdown,

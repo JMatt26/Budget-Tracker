@@ -379,3 +379,68 @@ def test_expense_breakdown_groups_by_category(auth_client):
 
 def test_expense_breakdown_404_for_unknown_budget(auth_client):
     assert auth_client.get("/budgets/999/expense-breakdown").status_code == 404
+
+
+def _create_budget(client):
+    today = date.today()
+    resp = client.post(
+        "/budgets/",
+        json={
+            "name": "Targets",
+            "start_date": today.isoformat(),
+            "end_date": (today + timedelta(days=30)).isoformat(),
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["id"]
+
+
+def test_budget_targets_default_to_null(auth_client):
+    budget_id = _create_budget(auth_client)
+    resp = auth_client.get(f"/budgets/{budget_id}/targets")
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {
+        "budget_id": budget_id,
+        "spending": None,
+        "invested": None,
+        "saved": None,
+    }
+
+
+def test_set_and_update_budget_targets(auth_client):
+    budget_id = _create_budget(auth_client)
+    resp = auth_client.put(
+        f"/budgets/{budget_id}/targets",
+        json={"spending": "1500.00", "invested": "500.00", "saved": "800.00"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["spending"] == "1500.00"
+
+    # Partial update keeps the other goals; null clears one
+    resp = auth_client.put(
+        f"/budgets/{budget_id}/targets", json={"invested": "600.00", "saved": None}
+    )
+    data = resp.json()
+    assert data["spending"] == "1500.00"
+    assert data["invested"] == "600.00"
+    assert data["saved"] is None
+
+    assert auth_client.get(f"/budgets/{budget_id}/targets").json() == data
+
+
+def test_budget_targets_reject_negative(auth_client):
+    budget_id = _create_budget(auth_client)
+    resp = auth_client.put(f"/budgets/{budget_id}/targets", json={"spending": "-1"})
+    assert resp.status_code == 422
+
+
+def test_budget_targets_404_for_unknown_budget(auth_client):
+    assert auth_client.get("/budgets/9999/targets").status_code == 404
+    assert auth_client.put("/budgets/9999/targets", json={}).status_code == 404
+
+
+def test_delete_budget_removes_targets(auth_client):
+    budget_id = _create_budget(auth_client)
+    auth_client.put(f"/budgets/{budget_id}/targets", json={"spending": "100.00"})
+    assert auth_client.delete(f"/budgets/{budget_id}").status_code == 204
+    assert auth_client.get(f"/budgets/{budget_id}/targets").status_code == 404

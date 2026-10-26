@@ -14,10 +14,11 @@ def engine_options(url: str) -> dict:
         return {"connect_args": {"check_same_thread": False}}
     # Hosted Postgres (e.g. Neon) drops idle connections, so test each one
     # before use and recycle them well inside the provider's idle timeout.
-    # Keep the pool small: free tiers allow few connections.
+    # Keep the pool modest: free tiers allow few connections.
     return {
-        "pool_size": 3,
-        "max_overflow": 2,
+        "pool_size": 5,
+        "max_overflow": 5,
+        "pool_timeout": 30,
         "pool_pre_ping": True,
         "pool_recycle": 300,
     }

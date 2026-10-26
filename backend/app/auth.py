@@ -59,7 +59,11 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[models
     return user
 
 
-async def get_current_user(
+# Deliberately a plain `def`: it queries the database, and FastAPI runs sync
+# dependencies in a worker thread. As `async def` the query would block the
+# event loop, and once every pooled connection is busy the loop could wait on a
+# connection that only the (blocked) loop can release: the worker freezes.
+def get_current_user(
     request: Request,
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),

@@ -50,4 +50,4 @@ def test_postgres_engine_options_are_pooled_and_pre_pinged():
     assert "connect_args" not in opts  # check_same_thread is SQLite-only
     assert opts["pool_pre_ping"] is True
     assert opts["pool_recycle"] <= 300
-    assert opts["pool_size"] + opts["max_overflow"] <= 5
+    assert opts["pool_size"] + opts["max_overflow"] <= 10

@@ -1,3 +1,4 @@
+import os
 from datetime import date
 
 import pytest
@@ -41,6 +42,30 @@ def clean_db():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     yield
+
+def _has_postgres() -> bool:
+    return os.environ.get("TEST_DATABASE_URL", "").startswith(("postgres://", "postgresql"))
+
+
+def pytest_collection_modifyitems(config, items):
+    """Tests marked `postgres` need a real server (TEST_DATABASE_URL).
+
+    Locally they skip without one. A CI job that is supposed to run them sets
+    REQUIRE_POSTGRES_TESTS=1, and then a missing server is an error, never a
+    quiet skip: otherwise a broken service container would leave CI green
+    while testing nothing.
+    """
+    if _has_postgres():
+        return
+    if os.environ.get("REQUIRE_POSTGRES_TESTS") == "1":
+        raise pytest.UsageError(
+            "REQUIRE_POSTGRES_TESTS=1 but TEST_DATABASE_URL does not point at PostgreSQL"
+        )
+    skip = pytest.mark.skip(reason="needs PostgreSQL: set TEST_DATABASE_URL")
+    for item in items:
+        if "postgres" in item.keywords:
+            item.add_marker(skip)
+
 
 @pytest.fixture(autouse=True)
 def todays_date_is_the_machines(monkeypatch):

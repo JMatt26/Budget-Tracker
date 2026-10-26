@@ -110,3 +110,69 @@ def test_delete_category_with_existing_transaction_fails(auth_client):
     assert del_resp.status_code == 400
     body = del_resp.json()
     assert "existing transactions" in body["detail"]
+
+
+def test_two_users_can_use_the_same_category_name(make_user_client):
+    alice = make_user_client("alice@example.com")
+    bob = make_user_client("bob@example.com")
+
+    payload = {"name": "Food", "type": "expense"}
+    assert alice.post("/categories/", json=payload).status_code == 201
+    assert bob.post("/categories/", json=payload).status_code == 201
+
+    # each user still only sees their own
+    assert alice.get("/categories/").json()["total"] == 1
+    assert bob.get("/categories/").json()["total"] == 1
+
+
+def test_rename_to_other_users_name_is_allowed(make_user_client):
+    alice = make_user_client("alice@example.com")
+    bob = make_user_client("bob@example.com")
+
+    alice.post("/categories/", json={"name": "Food", "type": "expense"})
+    bob_cat = bob.post("/categories/", json={"name": "Meals", "type": "expense"}).json()
+
+    resp = bob.put(f"/categories/{bob_cat['id']}", json={"name": "Food"})
+    assert resp.status_code == 200, resp.text
+
+
+def test_same_user_still_cannot_duplicate_on_rename(auth_client):
+    auth_client.post("/categories/", json={"name": "Food", "type": "expense"})
+    other = auth_client.post(
+        "/categories/", json={"name": "Meals", "type": "expense"}
+    ).json()
+
+    resp = auth_client.put(f"/categories/{other['id']}", json={"name": "Food"})
+    assert resp.status_code == 400
+    assert "already exists" in resp.json()["detail"]
+
+
+def test_unique_constraint_backs_up_the_router_check(auth_client):
+    """If two requests race past the duplicate check, the database constraint
+    must still reject the second one with the same 400, not a 500."""
+    from unittest.mock import patch
+
+    from app.routers import categories as categories_router
+
+    auth_client.post("/categories/", json={"name": "Food", "type": "expense"})
+
+    class _NoDuplicateFound:
+        def filter(self, *a, **k):
+            return self
+
+        def first(self):
+            return None
+
+    real_query = categories_router.Session.query
+
+    def fake_query(self, *entities, **kw):
+        # make only the pre-insert duplicate lookup miss
+        if entities and entities[0] is categories_router.models.Category:
+            return _NoDuplicateFound()
+        return real_query(self, *entities, **kw)
+
+    with patch.object(categories_router.Session, "query", fake_query):
+        resp = auth_client.post("/categories/", json={"name": "Food", "type": "expense"})
+
+    assert resp.status_code == 400
+    assert "already exists" in resp.json()["detail"]

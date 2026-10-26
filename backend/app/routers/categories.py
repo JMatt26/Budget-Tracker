@@ -1,6 +1,7 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
@@ -8,6 +9,19 @@ from ..db import get_db
 from ..auth import get_current_user
 
 router = APIRouter(prefix="/categories", tags=["categories"])
+
+
+def _commit_or_duplicate_error(db: Session) -> None:
+    """Commit, turning a lost race on the (user, name) unique constraint into
+    the same 400 the up-front duplicate check returns."""
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Category with this name already exists.",
+        )
 
 
 @router.post(
@@ -38,7 +52,7 @@ def create_category(
         **category_in.model_dump(), user_id=current_user.id
     )
     db.add(category)
-    db.commit()
+    _commit_or_duplicate_error(db)
     db.refresh(category)
     return category
 
@@ -142,7 +156,7 @@ def update_category(
     for field, value in update_data.items():
         setattr(category, field, value)
 
-    db.commit()
+    _commit_or_duplicate_error(db)
     db.refresh(category)
     return category
 

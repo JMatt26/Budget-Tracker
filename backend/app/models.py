@@ -6,6 +6,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import relationship
@@ -15,9 +16,12 @@ from .db import Base
 
 class Category(Base):
     __tablename__ = "categories"
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_categories_user_name"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), unique=True, index=True, nullable=False)
+    name = Column(String(100), index=True, nullable=False)
     type = Column(String(20), nullable=False) # e.g. income or expense
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)

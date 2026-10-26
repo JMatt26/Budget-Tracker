@@ -70,3 +70,24 @@ def auth_client(client: TestClient) -> TestClient:
 
     client.headers.update({"Authorization": f"Bearer {token}"})
     return client
+
+
+@pytest.fixture
+def make_user_client():
+    """Factory returning a fresh logged-in TestClient for the given email, so a
+    test can act as several users at once."""
+
+    def _make(email: str, password: str = "testpassword123") -> TestClient:
+        c = TestClient(app)
+        resp = c.post("/auth/register", json={"email": email, "password": password})
+        assert resp.status_code == 201, resp.text
+        resp = c.post(
+            "/auth/login",
+            data={"username": email, "password": password},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        assert resp.status_code == 200, resp.text
+        c.headers.update({"Authorization": f"Bearer {resp.json()['access_token']}"})
+        return c
+
+    return _make

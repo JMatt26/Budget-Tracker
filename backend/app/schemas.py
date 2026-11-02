@@ -277,6 +277,56 @@ class CategoryListResponse(PaginatedResponseBase):
     items: List[CategoryRead]
 
 
+StatementKind = Literal["credit", "bank"]
+
+
+class ColumnMapping(BaseModel):
+    """Which statement column holds what (0-based). Either `amount` or at
+    least one of `debit`/`credit` must be set."""
+    date: int = Field(..., ge=0)
+    description: Optional[int] = Field(None, ge=0)
+    amount: Optional[int] = Field(None, ge=0)
+    debit: Optional[int] = Field(None, ge=0)  # money out
+    credit: Optional[int] = Field(None, ge=0)  # money in
+    date_format: Optional[str] = None  # a strptime format; None = detect
+    flip_sign: bool = False  # for statements whose signs are the other way round
+
+    @model_validator(mode="after")
+    def check_amount_columns(self):
+        if self.amount is None and self.debit is None and self.credit is None:
+            raise ValueError("Choose an amount column, or debit and credit columns.")
+        return self
+
+
+class StatementRow(BaseModel):
+    index: int
+    date: Optional[DateType] = None
+    description: str
+    amount: Optional[Decimal] = None
+    type: Literal["income", "expense"]
+    payment_method: Optional[PaymentMethod] = None
+    category_ids: List[int] = Field(default_factory=list)  # suggested from history
+    budget_id: Optional[int] = None  # suggested; the series' current cycle
+    duplicate: bool = False  # looks like a transaction that's already saved
+    selected: bool = True
+    warning: Optional[str] = None
+
+    @field_serializer("amount")
+    def serialize_amount(self, v: Optional[Decimal]) -> Optional[float]:
+        return None if v is None else float(v)
+
+
+class StatementPreview(BaseModel):
+    columns: List[str]  # header names, or "Column 1"... for headerless files
+    mapping: ColumnMapping  # what was used, so the user can adjust it
+    rows: List[StatementRow]
+
+
+class TransactionBulkCreate(BaseModel):
+    # Validated one by one in the endpoint, so an error can name its row.
+    items: List[dict] = Field(..., min_length=1, max_length=1000)
+
+
 class ErrorResponse(BaseModel):
     detail: str
     code: str | None = None

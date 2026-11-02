@@ -19,6 +19,7 @@ const PATHS = {
   filter: "M4 5h16M7 12h10M10 19h4",
   menu: "M4 6h16M4 12h16M4 18h16",
   download: "M12 4v11M7 10l5 5 5-5M5 20h14",
+  upload: "M12 20V9M7 14l5-5 5 5M5 4h14",
   check: "M5 12l5 5 9-10",
   more: "M5 12h.01M12 12h.01M19 12h.01",
   sortAsc: "M12 19V5M6 11l6-6 6 6",

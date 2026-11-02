@@ -96,7 +96,6 @@ def test_budget_status_tracks_expenses(auth_client):
         "date": today.isoformat(),
         "type": "expense",
         "payment_method": "Cash",
-        "category_id": None,
         "budget_id": budget_id,
     }
     tx2_payload = {
@@ -105,7 +104,6 @@ def test_budget_status_tracks_expenses(auth_client):
         "date": (today + timedelta(days=1)).isoformat(),
         "type": "expense",
         "payment_method": "Cash",
-        "category_id": None,
         "budget_id": budget_id,
     }
 
@@ -148,7 +146,6 @@ def test_budget_status_tracks_investment_and_income(auth_client):
         "date": today.isoformat(),
         "type": "expense",
         "payment_method": "Cash",
-        "category_id": None,
         "budget_id": budget_id,
     }
     investment_payload = {
@@ -156,7 +153,6 @@ def test_budget_status_tracks_investment_and_income(auth_client):
         "description": "Brokerage transfer",
         "date": today.isoformat(),
         "type": "investment",
-        "category_id": None,
         "budget_id": budget_id,
     }
     income_payload = {
@@ -164,7 +160,6 @@ def test_budget_status_tracks_investment_and_income(auth_client):
         "description": "Refund",
         "date": today.isoformat(),
         "type": "income",
-        "category_id": None,
         "budget_id": budget_id,
     }
 
@@ -210,7 +205,6 @@ def test_budget_status_prorates_limit_for_sub_period(auth_client):
         "date": week1_start.isoformat(),
         "type": "expense",
         "payment_method": "Cash",
-        "category_id": None,
         "budget_id": budget_id,
     }
     in_week2_payload = {
@@ -219,7 +213,6 @@ def test_budget_status_prorates_limit_for_sub_period(auth_client):
         "date": week2_start.isoformat(),
         "type": "expense",
         "payment_method": "Cash",
-        "category_id": None,
         "budget_id": budget_id,
     }
 
@@ -319,7 +312,7 @@ def _post_tx(auth_client, budget_id, cat_id, day, amount, tx_type="expense"):
         "amount": amount,
         "date": day.isoformat(),
         "type": tx_type,
-        "category_id": cat_id,
+        "category_ids": [cat_id] if cat_id is not None else [],
         "budget_id": budget_id,
     }
     if tx_type == "expense":
@@ -444,3 +437,29 @@ def test_delete_budget_removes_targets(auth_client):
     auth_client.put(f"/budgets/{budget_id}/targets", json={"spending": "100.00"})
     assert auth_client.delete(f"/budgets/{budget_id}").status_code == 204
     assert auth_client.get(f"/budgets/{budget_id}/targets").status_code == 404
+
+
+def test_expense_breakdown_counts_multi_category_expense_in_each(auth_client):
+    today = date.today()
+    budget_id, cat_id = _budget_with_category(auth_client, today, today + timedelta(days=13))
+    other_id = auth_client.post(
+        "/categories/", json={"name": "Fun", "type": "expense"}
+    ).json()["id"]
+    resp = auth_client.post("/transactions/", json={
+        "amount": "40.00",
+        "date": today.isoformat(),
+        "type": "expense",
+        "payment_method": "Cash",
+        "category_ids": [cat_id, other_id],
+        "budget_id": budget_id,
+    })
+    assert resp.status_code == 201, resp.text
+
+    data = auth_client.get(f"/budgets/{budget_id}/expense-breakdown").json()
+    assert data["total_expense"] == "40.00"  # counted once overall
+    assert sorted((i["category_name"], i["total"]) for i in data["items"]) == [
+        ("Food", "40.00"),
+        ("Fun", "40.00"),
+    ]
+    cats = auth_client.get(f"/budgets/{budget_id}/categories").json()
+    assert cats[0]["actual_spending"] == "40.00"

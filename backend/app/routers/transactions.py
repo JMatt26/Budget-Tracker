@@ -33,6 +33,25 @@ def _budget_cycle_id(db: Session, user_id: int, budget_id: Optional[int], tx_dat
     return cycle_for_date(db, budget, tx_date).id
 
 
+def _user_categories(db: Session, user_id: int, category_ids: List[int]) -> List[models.Category]:
+    """The caller's categories for these ids; any id that isn't theirs (or
+    doesn't exist) rejects the whole request."""
+    wanted = set(category_ids)
+    if not wanted:
+        return []
+    categories = (
+        db.query(models.Category)
+        .filter(models.Category.id.in_(wanted), models.Category.user_id == user_id)
+        .all()
+    )
+    if len(categories) != len(wanted):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Category does not exist.",
+        )
+    return categories
+
+
 @router.post(
     "/",
     response_model=schemas.TransactionRead,
@@ -43,24 +62,11 @@ def create_transaction(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    if tx_in.category_id is not None:
-        category = (
-            db.query(models.Category)
-            .filter(
-                models.Category.id == tx_in.category_id,
-                models.Category.user_id == current_user.id,
-            )
-            .first()
-        )
-        if category is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Category does not exist.",
-            )
+    categories = _user_categories(db, current_user.id, tx_in.category_ids)
 
-    tx_data = tx_in.model_dump()
+    tx_data = tx_in.model_dump(exclude={"category_ids"})
     tx_data["budget_id"] = _budget_cycle_id(db, current_user.id, tx_in.budget_id, tx_in.date)
-    tx = models.Transaction(**tx_data, user_id=current_user.id)
+    tx = models.Transaction(**tx_data, categories=categories, user_id=current_user.id)
 
     db.add(tx)
     db.commit()
@@ -96,7 +102,7 @@ def list_transactions(
     if max_amount is not None:
         query = query.filter(models.Transaction.amount <= max_amount)
     if category_id is not None:
-        query = query.filter(models.Transaction.category_id == category_id)
+        query = query.filter(models.Transaction.categories.any(models.Category.id == category_id))
     if type is not None:
         query = query.filter(models.Transaction.type == type)
     if budget_id is not None:
@@ -163,17 +169,9 @@ def update_transaction(
 
     update_data = tx_update.model_dump(exclude_unset=True)
 
-    # Validate category if updated
-    if "category_id" in update_data and update_data["category_id"] is not None:
-        category = db.query(models.Category).filter(
-            models.Category.id == update_data["category_id"],
-            models.Category.user_id == current_user.id,
-        ).first()
-        if category is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Category does not exist.",
-            )
+    # Validate categories if updated
+    if "category_ids" in update_data:
+        tx.categories = _user_categories(db, current_user.id, update_data.pop("category_ids") or [])
 
     # An expense must always carry a payment method; other types never do.
     final_type = update_data.get("type", tx.type)

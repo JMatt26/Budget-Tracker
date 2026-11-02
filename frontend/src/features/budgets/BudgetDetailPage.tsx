@@ -45,7 +45,8 @@ import {
   type TargetMetric,
 } from "./projection";
 import { api } from "../../lib/api";
-import { categoryColor, formatMoney, formatSignedMoney, TYPE_META } from "../../lib/format";
+import { categoryColor, categoryNames, formatMoney, formatSignedMoney, TYPE_META } from "../../lib/format";
+import { CategoryPicker } from "../transactions/CategoryPicker";
 import { PAYMENT_METHODS } from "../../lib/types";
 import type {
   Category,
@@ -307,7 +308,7 @@ type BudgetTransactionFormData = {
   date: string;
   amount: string;
   type: "income" | "expense" | "investment";
-  category_id: string;
+  category_ids: number[];
   description: string;
   payment_method: PaymentMethod | "";
 };
@@ -324,7 +325,7 @@ const BudgetTransactionForm = ({
     date: formatLocalDate(new Date()),
     amount: "",
     type: "expense",
-    category_id: "",
+    category_ids: [],
     description: "",
     payment_method: "",
   });
@@ -343,7 +344,7 @@ const BudgetTransactionForm = ({
         type: data.type,
         payment_method: data.type === "expense" ? data.payment_method : null,
         description: data.description.trim() || null,
-        category_id: data.category_id ? Number(data.category_id) : null,
+        category_ids: data.category_ids,
         budget_id: budgetId,
       };
       const { data: response } = await api.post("/transactions", payload);
@@ -442,22 +443,12 @@ const BudgetTransactionForm = ({
           </Field>
         </div>
 
-        <Field label="Category">
-          <select
-            value={formData.category_id}
-            onChange={(e) =>
-              setFormData({ ...formData, category_id: e.target.value })
-            }
-            className="field"
-          >
-            <option value="">None</option>
-            {categories?.map((cat) => (
-              <option key={cat.id} value={cat.id}>
-                {cat.name}
-              </option>
-            ))}
-          </select>
-        </Field>
+        <CategoryPicker
+          categories={categories ?? []}
+          type={formData.type}
+          value={formData.category_ids}
+          onChange={(category_ids) => setFormData({ ...formData, category_ids })}
+        />
 
         <Field label="Description">
           <input
@@ -676,8 +667,8 @@ const BudgetDetailView: React.FC = () => {
         } else if (sortBy === "amount") {
           comparison = Number(a.amount) - Number(b.amount);
         } else if (sortBy === "category") {
-          const aCategory = a.category?.name || "Uncategorized";
-          const bCategory = b.category?.name || "Uncategorized";
+          const aCategory = categoryNames(a.categories);
+          const bCategory = categoryNames(b.categories);
           comparison = aCategory.localeCompare(bCategory);
         }
         return sortOrder === "asc" ? comparison : -comparison;
@@ -926,15 +917,15 @@ const BudgetDetailView: React.FC = () => {
                 >
                   <CategoryAvatar
                     size="sm"
-                    name={tx.description || tx.category?.name}
-                    color={categoryColor(tx.category ?? null, tx.id)}
+                    name={tx.description || tx.categories?.[0]?.name}
+                    color={categoryColor(tx.categories?.[0] ?? null, tx.id)}
                   />
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate text-sm font-medium text-ink">
                       {tx.description || "—"}
                     </span>
                     <span className="text-xs text-muted">
-                      {tx.category?.name || "Uncategorized"} ·{" "}
+                      {categoryNames(tx.categories)} ·{" "}
                       {formatDate(tx.date)}
                     </span>
                   </span>

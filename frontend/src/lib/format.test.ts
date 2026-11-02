@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   categoryColor,
+  categoryNames,
   dayLabel,
   describeBudgetPeriod,
   formatMoney,
@@ -144,5 +145,16 @@ describe("describeBudgetPeriod", () => {
   it("does not call a partial month 'Monthly'", () => {
     expect(describeBudgetPeriod("2026-10-01", "2026-10-30")).not.toBe("Monthly");
     expect(describeBudgetPeriod("2026-10-02", "2026-10-31")).not.toBe("Monthly");
+  });
+});
+
+describe("categoryNames", () => {
+  it("joins every category", () => {
+    expect(categoryNames([{ name: "Food" }, { name: "Fun" }])).toBe("Food, Fun");
+  });
+
+  it("says uncategorized when there are none", () => {
+    expect(categoryNames([])).toBe("Uncategorized");
+    expect(categoryNames(undefined)).toBe("Uncategorized");
   });
 });

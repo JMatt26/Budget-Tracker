@@ -24,7 +24,7 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 EXPECTED_TABLES = {
     "users", "categories", "transactions", "budgets",
-    "budget_categories", "budget_targets", "incomes",
+    "budget_categories", "budget_targets", "incomes", "transaction_categories",
 }
 
 
@@ -87,3 +87,30 @@ def test_migrations_match_models_on_postgres():
         with admin.connect() as conn:
             conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
         admin.dispose()
+
+
+def test_existing_transaction_categories_survive_the_upgrade(tmp_path):
+    url = f"sqlite:///{tmp_path / 'data.db'}"
+    _alembic(url, "upgrade", "0001")
+
+    engine = create_engine(url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("INSERT INTO users (id, email, hashed_password) VALUES (1, 'a@b.c', 'x')"))
+            conn.execute(text("INSERT INTO categories (id, name, type, user_id) VALUES (7, 'Food', 'expense', 1)"))
+            conn.execute(text(
+                "INSERT INTO transactions (id, amount, date, category_id, user_id, type) VALUES "
+                "(1, 5, '2026-10-01', 7, 1, 'income'), (2, 6, '2026-10-02', NULL, 1, 'income')"
+            ))
+
+        _alembic(url, "upgrade", "head")
+        with engine.connect() as conn:
+            rows = conn.execute(text("SELECT transaction_id, category_id FROM transaction_categories")).all()
+        assert rows == [(1, 7)]
+
+        _alembic(url, "downgrade", "0001")
+        with engine.connect() as conn:
+            rows = conn.execute(text("SELECT id, category_id FROM transactions ORDER BY id")).all()
+        assert rows == [(1, 7), (2, None)]
+    finally:
+        engine.dispose()

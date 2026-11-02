@@ -59,6 +59,10 @@ export const categoryColor = (
   return PALETTE[Math.abs(idx) % PALETTE.length];
 };
 
+// A transaction's categories as one label, e.g. "Food, Fun".
+export const categoryNames = (categories?: Pick<Category, "name">[] | null) =>
+  categories?.length ? categories.map((c) => c.name).join(", ") : "Uncategorized";
+
 export const paletteColor = (index: number) => PALETTE[index % PALETTE.length];
 
 export const formatShortDate = (iso: string | null | undefined) => {

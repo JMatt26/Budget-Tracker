@@ -9,6 +9,29 @@ from .budget_cycles import infer_recurrence
 
 
 def upgrade_schema(engine: Engine) -> None:
+    _add_budget_recurrence(engine)
+    _move_transaction_categories(engine)
+
+
+def _move_transaction_categories(engine: Engine) -> None:
+    """Transactions used to hold one category_id; now they're linked through
+    transaction_categories (which create_all() has already made). The old
+    column stays, unused, and is cleared so a removed link isn't restored."""
+    inspector = inspect(engine)
+    if not inspector.has_table("transactions"):
+        return
+    if "category_id" not in {c["name"] for c in inspector.get_columns("transactions")}:
+        return
+
+    with engine.begin() as conn:
+        conn.execute(text(
+            "INSERT INTO transaction_categories (transaction_id, category_id) "
+            "SELECT id, category_id FROM transactions WHERE category_id IS NOT NULL"
+        ))
+        conn.execute(text("UPDATE transactions SET category_id = NULL"))
+
+
+def _add_budget_recurrence(engine: Engine) -> None:
     columns = {c["name"] for c in inspect(engine).get_columns("budgets")}
     if "recurrence" in columns:
         return

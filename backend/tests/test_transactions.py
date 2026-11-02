@@ -19,7 +19,6 @@ def test_create_transaction(auth_client):
         "date": date.today().isoformat(),
         "type": "expense",
         "payment_method": "Cash",
-        "category_id": None,
     }
 
     response = auth_client.post("/transactions/", json=payload)
@@ -101,7 +100,6 @@ def test_get_transaction_by_id(auth_client):
         "date": date.today().isoformat(),
         "type": "expense",
         "payment_method": "Cash",
-        "category_id": None,
     }
     resp = auth_client.post("/transactions/", json=payload)
     assert resp.status_code == 201
@@ -123,7 +121,6 @@ def test_update_transaction(auth_client):
         "date": date.today().isoformat(),
         "type": "expense",
         "payment_method": "Cash",
-        "category_id": None,
     }
     resp = auth_client.post("/transactions/", json=payload)
     assert resp.status_code == 201
@@ -148,7 +145,6 @@ def test_delete_transaction(auth_client):
         "date": date.today().isoformat(),
         "type": "expense",
         "payment_method": "Cash",
-        "category_id": None,
     }
     resp = auth_client.post("/transactions/", json=payload)
     assert resp.status_code == 201
@@ -222,3 +218,70 @@ def test_update_payment_method_and_type_changes(auth_client):
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["payment_method"] == "Debit"
+
+
+def _category(auth_client, name, type_="expense"):
+    resp = auth_client.post("/categories/", json={"name": name, "type": type_})
+    assert resp.status_code == 201, resp.text
+    return resp.json()["id"]
+
+
+def test_transaction_can_have_several_categories(auth_client):
+    food = _category(auth_client, "Food")
+    fun = _category(auth_client, "Fun")
+
+    resp = auth_client.post("/transactions/", json={**_tx(), "category_ids": [fun, food, food]})
+    assert resp.status_code == 201, resp.text
+    data = resp.json()
+    assert sorted(data["category_ids"]) == sorted([food, fun])
+    assert [c["name"] for c in data["categories"]] == ["Food", "Fun"]
+
+    # filtering by either category finds it
+    for cat in (food, fun):
+        listed = auth_client.get("/transactions/", params={"category_id": cat}).json()
+        assert [t["id"] for t in listed["items"]] == [data["id"]]
+
+
+def test_update_replaces_or_keeps_categories(auth_client):
+    food = _category(auth_client, "Food")
+    fun = _category(auth_client, "Fun")
+    tx_id = auth_client.post("/transactions/", json={**_tx(), "category_ids": [food]}).json()["id"]
+
+    # not sending category_ids leaves them alone
+    resp = auth_client.put(f"/transactions/{tx_id}", json={"description": "Dinner"})
+    assert resp.json()["category_ids"] == [food]
+
+    resp = auth_client.put(f"/transactions/{tx_id}", json={"category_ids": [food, fun]})
+    assert resp.status_code == 200, resp.text
+    assert sorted(resp.json()["category_ids"]) == sorted([food, fun])
+
+    resp = auth_client.put(f"/transactions/{tx_id}", json={"category_ids": []})
+    assert resp.json()["category_ids"] == []
+    assert resp.json()["categories"] == []
+
+
+def test_unknown_category_among_several_is_rejected(auth_client):
+    food = _category(auth_client, "Food")
+    resp = auth_client.post("/transactions/", json={**_tx(), "category_ids": [food, 9999]})
+    assert resp.status_code == 400, resp.text
+    assert auth_client.get("/transactions/").json()["total"] == 0
+
+
+def test_transaction_counts_toward_each_of_its_categories(auth_client):
+    food = _category(auth_client, "Food")
+    fun = _category(auth_client, "Fun")
+    auth_client.post("/transactions/", json={**_tx(), "amount": "30.00", "category_ids": [food, fun]})
+    auth_client.post("/transactions/", json={**_tx(), "amount": "5.00"})
+
+    data = auth_client.get("/reports/summary", params={"group_by": "category"}).json()
+    # the overall total counts the transaction once
+    assert Decimal(data["totals"]["total_expense"]) == Decimal("35.00")
+    by_name = {g["category_name"]: Decimal(g["total_expense"]) for g in data["by_category"]}
+    assert by_name == {"Food": Decimal("30.00"), "Fun": Decimal("30.00"), None: Decimal("5.00")}
+
+
+def test_category_with_multi_category_transactions_cannot_be_deleted(auth_client):
+    food = _category(auth_client, "Food")
+    fun = _category(auth_client, "Fun")
+    auth_client.post("/transactions/", json={**_tx(), "category_ids": [food, fun]})
+    assert auth_client.delete(f"/categories/{fun}").status_code == 400

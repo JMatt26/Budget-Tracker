@@ -427,19 +427,26 @@ def get_expense_breakdown(
 
     period_start, period_end = _clamp_period(budget, start_date, end_date)
 
-    rows = (
-        db.query(
-            models.Transaction.category_id,
-            models.Category.name,
-            func.sum(models.Transaction.amount),
-        )
-        .outerjoin(models.Category, models.Transaction.category_id == models.Category.id)
+    expenses = (
+        db.query(models.Transaction)
         .filter(models.Transaction.type == "expense")
         .filter(models.Transaction.budget_id == budget_id)
         .filter(models.Transaction.user_id == current_user.id)
         .filter(models.Transaction.date >= period_start)
         .filter(models.Transaction.date <= period_end)
-        .group_by(models.Transaction.category_id, models.Category.name)
+    )
+    total_expense = expenses.with_entities(
+        func.coalesce(func.sum(models.Transaction.amount), 0)
+    ).scalar() or Decimal(0)
+
+    # A transaction with several categories counts toward each of them, so
+    # the items can add up to more than total_expense.
+    tc = models.transaction_categories
+    rows = (
+        expenses.outerjoin(tc, tc.c.transaction_id == models.Transaction.id)
+        .outerjoin(models.Category, tc.c.category_id == models.Category.id)
+        .with_entities(tc.c.category_id, models.Category.name, func.sum(models.Transaction.amount))
+        .group_by(tc.c.category_id, models.Category.name)
         .all()
     )
 
@@ -466,7 +473,7 @@ def get_expense_breakdown(
     return schemas.ExpenseBreakdown(
         period_start=period_start,
         period_end=period_end,
-        total_expense=sum((i.total for i in items), Decimal(0)),
+        total_expense=Decimal(total_expense),
         items=items,
     )
 
@@ -574,7 +581,7 @@ def add_category_to_budget(
     # Only count transactions that are directly linked to this budget AND have this category
     actual_spending = (
         db.query(func.coalesce(func.sum(models.Transaction.amount), 0))
-        .filter(models.Transaction.category_id == category.id)
+        .filter(models.Transaction.categories.any(models.Category.id == category.id))
         .filter(models.Transaction.type == "expense")
         .filter(models.Transaction.budget_id == budget_id)
         .filter(models.Transaction.user_id == current_user.id)
@@ -633,7 +640,7 @@ def get_budget_categories(
         # Only count transactions that are directly linked to this budget AND have this category
         actual_spending = (
             db.query(func.coalesce(func.sum(models.Transaction.amount), 0))
-            .filter(models.Transaction.category_id == bc.category_id)
+            .filter(models.Transaction.categories.any(models.Category.id == bc.category_id))
             .filter(models.Transaction.type == "expense")
             .filter(models.Transaction.budget_id == budget_id)
             .filter(models.Transaction.user_id == current_user.id)
@@ -704,7 +711,7 @@ def update_budget_category(
     # Calculate actual spending
     actual_spending = (
         db.query(func.coalesce(func.sum(models.Transaction.amount), 0))
-        .filter(models.Transaction.category_id == budget_category.category_id)
+        .filter(models.Transaction.categories.any(models.Category.id == budget_category.category_id))
         .filter(models.Transaction.type == "expense")
         .filter(models.Transaction.budget_id == budget_id)
         .filter(models.Transaction.user_id == current_user.id)
@@ -810,7 +817,7 @@ def get_budget_category_transactions(
     query = (
         db.query(models.Transaction)
         .filter(models.Transaction.user_id == current_user.id)
-        .filter(models.Transaction.category_id == budget_category.category_id)
+        .filter(models.Transaction.categories.any(models.Category.id == budget_category.category_id))
         .filter(models.Transaction.type == "expense")
         .filter(models.Transaction.budget_id == budget_id)
         .filter(models.Transaction.date >= budget.start_date)

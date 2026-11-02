@@ -67,7 +67,7 @@ def alices_data(alice):
             "description": "alice secret purchase",
             "date": date.today().isoformat(),
             "type": "expense",
-            "category_id": category_id,
+            "category_ids": [category_id],
             "budget_id": current_budget_id,
             "payment_method": "Visa",
         },
@@ -177,7 +177,7 @@ def test_bob_cannot_link_his_records_to_alices_category_or_budget(bob, alices_da
         "type": "expense",
         "payment_method": "Cash",
     }
-    resp = bob.post("/transactions/", json={**tx, "category_id": alices_data["category_id"]})
+    resp = bob.post("/transactions/", json={**tx, "category_ids": [alices_data["category_id"]]})
     assert resp.status_code in (400, 404), resp.text
     resp = bob.post("/transactions/", json={**tx, "budget_id": alices_data["current_budget_id"]})
     assert resp.status_code in (400, 404), resp.text
@@ -211,7 +211,7 @@ def test_bob_cannot_move_his_transaction_into_alices_category(bob, alices_data):
     assert created.status_code == 201, created.text
     resp = bob.put(
         f"/transactions/{created.json()['id']}",
-        json={"category_id": alices_data["category_id"]},
+        json={"category_ids": [alices_data["category_id"]]},
     )
     assert resp.status_code in (400, 404), resp.text
 

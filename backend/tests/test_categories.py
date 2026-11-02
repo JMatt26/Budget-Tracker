@@ -98,7 +98,7 @@ def test_delete_category_with_existing_transaction_fails(auth_client):
         "date": "2025-11-19",
         "type": "expense",
         "payment_method": "Cash",
-        "category_id": category_id,
+        "category_ids": [category_id],
     }
     tx_resp = auth_client.post("/transactions/", json=tx_payload)
     assert tx_resp.status_code == 201

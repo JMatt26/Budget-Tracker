@@ -187,7 +187,7 @@ def delete_category(
     # Optional: prevent delete if there are transactions
     tx_exists = (
         db.query(models.Transaction)
-        .filter(models.Transaction.category_id == category_id)
+        .filter(models.Transaction.categories.any(models.Category.id == category_id))
         .first()
     )
     if tx_exists:

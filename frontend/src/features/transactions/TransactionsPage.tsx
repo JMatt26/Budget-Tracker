@@ -9,7 +9,7 @@ import { ChipGroup } from "../../components/ui/Segmented";
 import { Icon } from "../../components/ui/Icon";
 import { CategoryAvatar, TypeBadge } from "../../components/ui/Progress";
 import { useQuickAdd } from "../../components/layout/QuickAdd";
-import { categoryColor, dayLabel, formatMoney, formatSignedMoney, TYPE_META } from "../../lib/format";
+import { categoryColor, categoryNames, dayLabel, formatMoney, formatSignedMoney, TYPE_META } from "../../lib/format";
 import React from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -282,15 +282,15 @@ const TYPE_FILTERS: { value: "" | "income" | "expense" | "investment"; label: st
                     className="group flex items-center gap-3 rounded-xl px-3 py-2.5 transition hover:bg-canvas max-sm:grid max-sm:grid-cols-[auto_minmax(0,1fr)_auto] max-sm:gap-y-0 max-sm:[&>:first-child]:row-span-2 sm:gap-4"
                   >
                     <CategoryAvatar
-                      name={tx.description || tx.category?.name}
-                      color={categoryColor(tx.category ?? null, tx.id)}
+                      name={tx.description || tx.categories?.[0]?.name}
+                      color={categoryColor(tx.categories?.[0] ?? null, tx.id)}
                     />
                     <div className="flex min-w-0 flex-1 flex-col max-sm:row-span-2">
                       <span className="truncate text-sm font-medium text-ink">
                         {tx.description ?? "—"}
                       </span>
                       <span className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
-                        <span>{tx.category?.name ?? "Uncategorized"}</span>
+                        <span>{categoryNames(tx.categories)}</span>
                         <span aria-hidden="true">·</span>
                         {tx.payment_method && (
                           <>

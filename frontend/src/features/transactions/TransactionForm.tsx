@@ -10,9 +10,10 @@ import { Button } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
 import { Field, FormError } from "../../components/ui/Field";
 import { Segmented } from "../../components/ui/Segmented";
-import { categoryColor, toLocalISODate } from "../../lib/format";
+import { toLocalISODate } from "../../lib/format";
 import React from "react";
 import { fetchBudgets } from "../../lib/budget-api";
+import { CategoryPicker } from "./CategoryPicker";
 
 const schema = z
   .object({
@@ -21,10 +22,7 @@ const schema = z
   description: z.string().optional(),
   type: z.enum(["income", "expense", "investment"]),
   payment_method: z.enum(["Amex", "Visa", "Debit", "Cash"]).optional().or(z.literal("")),
-  category_id: z
-    .string()
-    .optional()
-    .transform((val) => (val ? Number(val) : undefined)),
+  category_ids: z.array(z.number()),
   budget_id: z
     .string()
     .optional()
@@ -82,13 +80,14 @@ export const TransactionForm = ({
       description: transaction.description ?? "",
       type: transaction.type,
       payment_method: transaction.payment_method ?? "",
-      category_id: transaction.category_id ? String(transaction.category_id) : undefined,
+      category_ids: transaction.category_ids ?? [],
       budget_id: transaction.budget_id ? String(transaction.budget_id) : undefined,
     }
   : {
       date: toLocalISODate(new Date()),
       type: "expense",
       payment_method: "",
+      category_ids: [],
     };
 
 
@@ -117,20 +116,7 @@ export const TransactionForm = ({
   const isAtMaxLength = descriptionLength >= maxLength;
 
   const selectedType = (watch("type") ?? "expense") as TransactionType;
-  const selectedCategoryId = watch("category_id") ?? "";
-
-  // Show categories that match the chosen type first, plus whichever
-  // category is already selected so editing never hides it.
-  const visibleCategories = (categories ?? []).filter(
-    (c) => c.type === selectedType || String(c.id) === selectedCategoryId
-  );
-  const otherCategories = (categories ?? []).filter(
-    (c) => !visibleCategories.includes(c)
-  );
-  const [showAllCategories, setShowAllCategories] = React.useState(false);
-  const chipCategories = showAllCategories
-    ? [...visibleCategories, ...otherCategories]
-    : visibleCategories;
+  const selectedCategoryIds = watch("category_ids") ?? [];
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
@@ -150,13 +136,8 @@ export const TransactionForm = ({
       const description = transformedValues.description?.trim();
       payload.description = description && description !== "" ? description : null;
 
-      // For updates, always include category_id (even if null) to allow clearing the category
-      // For creates, only include if it has a value
-      if (transaction) {
-        payload.category_id = transformedValues.category_id ?? null;
-      } else if (transformedValues.category_id !== undefined) {
-        payload.category_id = transformedValues.category_id;
-      }
+      // Always send the full set ([] clears it)
+      payload.category_ids = transformedValues.category_ids;
 
       // Always send budget_id (null clears it)
       payload.budget_id = transformedValues.budget_id ?? null;
@@ -208,7 +189,6 @@ export const TransactionForm = ({
     >
       <form className="flex min-h-full flex-col gap-6" onSubmit={handleSubmit(onSubmit)}>
         <input type="hidden" {...register("type")} />
-        <input type="hidden" {...register("category_id")} />
 
         <Segmented
           label="Type"
@@ -245,37 +225,12 @@ export const TransactionForm = ({
           )}
         </label>
 
-        <div className="flex flex-col gap-2.5">
-          <span className="text-[13px] font-medium text-muted">Category</span>
-          <div className="flex flex-wrap gap-2">
-            <CategoryChip
-              label="None"
-              color="#98A2B3"
-              active={!selectedCategoryId}
-              onClick={() => setValue("category_id", "", { shouldDirty: true })}
-            />
-            {chipCategories.map((c) => (
-              <CategoryChip
-                key={c.id}
-                label={c.name}
-                color={categoryColor(c)}
-                active={String(c.id) === selectedCategoryId}
-                onClick={() =>
-                  setValue("category_id", String(c.id), { shouldDirty: true })
-                }
-              />
-            ))}
-            {otherCategories.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setShowAllCategories((v) => !v)}
-                className="min-h-[38px] rounded-full px-3 text-[13px] font-medium text-accent hover:bg-accent-soft"
-              >
-                {showAllCategories ? "Show fewer" : `+${otherCategories.length} more`}
-              </button>
-            )}
-          </div>
-        </div>
+        <CategoryPicker
+          categories={categories ?? []}
+          type={selectedType}
+          value={selectedCategoryIds}
+          onChange={(ids) => setValue("category_ids", ids, { shouldDirty: true })}
+        />
 
         {selectedType === "expense" && (
           <Field label="Payment method" error={errors.payment_method?.message}>
@@ -349,29 +304,3 @@ export const TransactionForm = ({
     </Modal>
   );
 };
-
-const CategoryChip = ({
-  label,
-  color,
-  active,
-  onClick,
-}: {
-  label: string;
-  color: string;
-  active: boolean;
-  onClick: () => void;
-}) => (
-  <button
-    type="button"
-    aria-pressed={active}
-    onClick={onClick}
-    className={clsx(
-      "flex min-h-[38px] items-center gap-2 rounded-full border-[1.5px] px-3.5 text-[13px] font-medium text-ink transition",
-      active ? "" : "border-line bg-surface hover:border-ink/25"
-    )}
-    style={active ? { borderColor: color, backgroundColor: `${color}14` } : undefined}
-  >
-    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
-    {label}
-  </button>
-);

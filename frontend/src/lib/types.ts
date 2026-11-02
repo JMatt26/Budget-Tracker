@@ -19,8 +19,8 @@ export interface Transaction {
   description?: string | null;
   type: TransactionType;
   payment_method?: PaymentMethod | null;
-  category_id?: number | null;
-  category?: Category | null;
+  category_ids?: number[];
+  categories?: Category[]; // sorted by name; empty means uncategorized
   budget_id?: number | null;
   budget?: Budget | null;
   created_at?: string;

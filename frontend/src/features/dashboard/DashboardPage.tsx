@@ -17,6 +17,7 @@ import {
 import { computeProjections } from "../../lib/incomeProjections";
 import {
   categoryColor,
+  categoryNames,
   describeBudgetPeriod,
   formatMoney,
   formatSignedMoney,
@@ -399,15 +400,15 @@ const RecentActivity = () => {
             <div key={tx.id} className="flex items-center gap-3 py-2.5">
               <CategoryAvatar
                 size="sm"
-                name={tx.description || tx.category?.name}
-                color={categoryColor(tx.category ?? null, tx.id)}
+                name={tx.description || tx.categories?.[0]?.name}
+                color={categoryColor(tx.categories?.[0] ?? null, tx.id)}
               />
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate text-sm font-medium text-ink">
-                  {tx.description || tx.category?.name || "Untitled"}
+                  {tx.description || tx.categories?.[0]?.name || "Untitled"}
                 </span>
                 <span className="truncate text-xs text-muted">
-                  {tx.category?.name ?? "Uncategorized"} ·{" "}
+                  {categoryNames(tx.categories)} ·{" "}
                   {new Date(`${tx.date.slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, {
                     month: "short",
                     day: "numeric",

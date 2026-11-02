@@ -1,6 +1,7 @@
 from sqlalchemy import (
     Column, 
     Integer,
+    Table,
     String,
     Numeric,
     Date,
@@ -12,6 +13,16 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from .db import Base
+
+
+# many-to-many: a transaction can carry several categories (like tags), and
+# counts toward each of them
+transaction_categories = Table(
+    "transaction_categories",
+    Base.metadata,
+    Column("transaction_id", Integer, ForeignKey("transactions.id", ondelete="CASCADE"), primary_key=True),
+    Column("category_id", Integer, ForeignKey("categories.id", ondelete="CASCADE"), primary_key=True, index=True),
+)
 
 
 class Category(Base):
@@ -29,8 +40,8 @@ class Category(Base):
 
     transactions = relationship(
         "Transaction",
-        back_populates="category",
-        cascade="all, delete-orphan",
+        secondary=transaction_categories,
+        back_populates="categories",
     )
 
     # many-to-many: a category can be in many budgets with different limits
@@ -49,9 +60,13 @@ class Transaction(Base):
     description = Column(String(255), nullable=True)
     date = Column(Date, nullable=False)
 
-    # Optional tag
-    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
-    category = relationship("Category", back_populates="transactions")
+    # Optional tags; empty means uncategorized
+    categories = relationship(
+        "Category",
+        secondary=transaction_categories,
+        back_populates="transactions",
+        order_by="Category.name",
+    )
 
     # Optional link to budget
     budget_id = Column(Integer, ForeignKey("budgets.id"), nullable=True)
@@ -74,6 +89,10 @@ class Transaction(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+    @property
+    def category_ids(self) -> list[int]:
+        return [c.id for c in self.categories]
 
 
 class Budget(Base):

@@ -61,10 +61,12 @@ def get_summary(
     by_category: Optional[list[schemas.CategorySummaryItem]] = None
 
     if group_by == "category":
-        # Group by category, splitting income/expense per category
+        # Group by category, splitting income/expense per category. A
+        # transaction with several categories counts toward each of them.
+        tc = models.transaction_categories
         grouped_rows = (
             db.query(
-                models.Transaction.category_id,
+                tc.c.category_id,
                 models.Category.name,
                 func.coalesce(
                     func.sum(
@@ -94,10 +96,8 @@ def get_summary(
                     0,
                 ).label("total_expense"),
             )
-            .outerjoin(
-                models.Category,
-                models.Transaction.category_id == models.Category.id,
-            )
+            .outerjoin(tc, tc.c.transaction_id == models.Transaction.id)
+            .outerjoin(models.Category, tc.c.category_id == models.Category.id)
             .filter(models.Transaction.user_id == current_user.id)
         )
 
@@ -106,9 +106,7 @@ def get_summary(
         if end_date is not None:
             grouped_rows = grouped_rows.filter(models.Transaction.date <= end_date)
 
-        grouped_rows = grouped_rows.group_by(
-            models.Transaction.category_id, models.Category.name
-        )
+        grouped_rows = grouped_rows.group_by(tc.c.category_id, models.Category.name)
 
         results = grouped_rows.all()
 
@@ -160,7 +158,7 @@ def export_transactions_csv(
     if end_date is not None:
         query = query.filter(models.Transaction.date <= end_date)
     if category_id is not None:
-        query = query.filter(models.Transaction.category_id == category_id)
+        query = query.filter(models.Transaction.categories.any(models.Category.id == category_id))
     if type is not None:
         query = query.filter(models.Transaction.type == type)
     if min_amount is not None:
@@ -184,7 +182,7 @@ def export_transactions_csv(
             "amount",
             "type",
             "description",
-            "category_id",
+            "category_ids",
             "budget_id",
             "payment_method",
         ]
@@ -198,7 +196,7 @@ def export_transactions_csv(
                 str(tx.amount),
                 tx.type,
                 tx.description or "",
-                tx.category_id if tx.category_id is not None else "",
+                ";".join(str(i) for i in tx.category_ids),
                 tx.budget_id if tx.budget_id is not None else "",
                 tx.payment_method or "",
             ]

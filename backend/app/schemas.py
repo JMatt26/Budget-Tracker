@@ -32,7 +32,7 @@ class TransactionBase(BaseModel):
     description: Optional[str] = Field(None, max_length=255)
     date: DateType
     type: str = Field(..., pattern="^(income|expense|investment)$")
-    category_id: Optional[int] = None
+    category_ids: List[int] = Field(default_factory=list)
     budget_id: Optional[int] = None
     payment_method: Optional[PaymentMethod] = None
 
@@ -202,7 +202,7 @@ class TransactionRead(TransactionBase):
     id: int
     created_at: datetime
     updated_at: datetime
-    category: Optional[CategoryRead] = None
+    categories: List[CategoryRead] = Field(default_factory=list)
     budget: Optional[BudgetCore] = None
 
     @field_serializer("amount")
@@ -217,7 +217,7 @@ class TransactionUpdate(BaseModel):
     description: Optional[str] = Field(None, max_length=255)
     date: Optional[DateType] = None
     type: Optional[str] = Field(None, pattern="^(income|expense|investment)$")
-    category_id: Optional[int] = None
+    category_ids: Optional[List[int]] = None  # replaces the whole set; [] clears it
     budget_id: Optional[int] = None
     payment_method: Optional[PaymentMethod] = None
 

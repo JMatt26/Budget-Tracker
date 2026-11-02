@@ -22,7 +22,6 @@ def test_summary_with_transactions(auth_client):
         "description": "Salary",
         "date": date.today().isoformat(),
         "type": "income",
-        "category_id": None,
     }
     resp_income = auth_client.post("/transactions/", json=income_payload)
     assert resp_income.status_code == 201, resp_income.text
@@ -34,7 +33,6 @@ def test_summary_with_transactions(auth_client):
         "date": date.today().isoformat(),
         "type": "expense",
         "payment_method": "Cash",
-        "category_id": None,
     }
     resp_expense = auth_client.post("/transactions/", json=expense_payload)
     assert resp_expense.status_code == 201, resp_expense.text
@@ -75,14 +73,14 @@ def test_summary_grouped_by_category(auth_client: TestClient):
         "date": "2025-01-01",
         "type": "expense",
         "payment_method": "Cash",
-        "category_id": food_id,
+        "category_ids": [food_id],
     }
     tx2 = {
         "amount": 1000.0,
         "description": "Paycheck",
         "date": "2025-01-02",
         "type": "income",
-        "category_id": salary_id,
+        "category_ids": [salary_id],
     }
 
     r1 = auth_client.post("/transactions", json=tx1)
@@ -137,6 +135,6 @@ def test_transactions_export_csv(auth_client: TestClient):
 
     body = resp.text
     # Header row should be present
-    assert "id,date,amount,type,description,category_id,budget_id" in body
+    assert "id,date,amount,type,description,category_ids,budget_id" in body
     # Our transaction description should appear somewhere in the CSV
     assert "Test export" in body

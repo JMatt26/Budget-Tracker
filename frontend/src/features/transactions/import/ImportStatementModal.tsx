@@ -318,7 +318,7 @@ const ColumnsPanel = ({
   const splitAmounts = mapping.amount == null;
 
   const columnSelect = (
-    role: "date" | "description" | "amount" | "debit" | "credit",
+    role: "date" | "description" | "description_extra" | "amount" | "debit" | "credit",
     label: string,
     optional = true
   ) => (
@@ -342,9 +342,10 @@ const ColumnsPanel = ({
 
   return (
     <div className="flex flex-col gap-4 rounded-2xl border border-line bg-canvas p-4">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-4">
         {columnSelect("date", "Date", false)}
         {columnSelect("description", "Description")}
+        {columnSelect("description_extra", "More description")}
         <Field label="Date format">
           <select
             className="field"

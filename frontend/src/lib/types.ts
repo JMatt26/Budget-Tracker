@@ -71,6 +71,7 @@ export type StatementKind = "credit" | "bank";
 export interface ColumnMapping {
   date: number;
   description: number | null;
+  description_extra?: number | null;
   amount: number | null;
   debit: number | null;
   credit: number | null;

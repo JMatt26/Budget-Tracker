@@ -12,6 +12,7 @@ category suggestions.
 import csv
 import io
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -37,16 +38,71 @@ DATE_FORMATS = [
     "%b %d %Y",
 ]
 
+# Header names for each role, as _header_key normalises them: lowercase,
+# accents, digits and punctuation gone, currency codes dropped (so
+# "Amount (CAD$)" is "amount" and "Description 2" is "description").
+# English plus the French used by Quebec banks.
 _HEADER_ROLES = {
-    "date": {"date", "transaction date", "trans date", "posted date", "post date", "posting date"},
-    "description": {
-        "description", "transaction description", "merchant", "merchant name",
-        "payee", "details", "name", "memo", "narrative",
+    "date": {
+        "date", "transaction date", "trans date", "tran date", "txn date", "date of transaction",
+        "posted date", "post date", "posting date", "date posted", "posted", "posted on",
+        "booking date", "booked date", "book date", "entry date", "value date",
+        "effective date", "process date", "processed date", "processing date",
+        "activity date", "purchase date", "date transaction",
+        "date de transaction", "date de l operation", "date operation", "date d inscription",
+        "date de publication", "date d achat",
     },
-    "amount": {"amount", "transaction amount"},
-    "debit": {"debit", "debits", "withdrawal", "withdrawals", "money out", "charges"},
-    "credit": {"credit", "credits", "deposit", "deposits", "money in", "payments"},
+    "description": {
+        "description", "desc", "descr", "transaction description", "transaction details",
+        "transaction detail", "details", "detail", "description details",
+        "original description", "statement description", "activity description",
+        "transaction narrative", "narrative", "narration", "particulars",
+        "merchant", "merchant name", "merchant description", "merchant details",
+        "payee", "payee name", "payee description", "payer", "payer name", "name",
+        "vendor", "vendor name", "store", "counterparty", "counter party", "beneficiary",
+        "transaction", "transaction name", "transaction title", "activity", "item", "label",
+        "libelle", "libelle de l operation", "commercant", "beneficiaire",
+    },
+    # read only when there's no main description, else added to it
+    "description_extra": {
+        "memo", "notes", "note", "remarks", "remark", "comment", "comments",
+        "reference", "ref", "transaction reference", "additional details",
+        "additional information", "additional info", "additional description",
+        "extended description", "extended details", "more details", "information", "info",
+        "sub description", "subdescription", "category description", "remarque",
+    },
+    "amount": {
+        "amount", "amt", "transaction amount", "trans amount", "txn amount", "net amount",
+        "posted amount", "billing amount", "billed amount", "settlement amount",
+        "value", "total", "sum",
+        "debit credit", "credit debit", "debits credits", "debit credit amount",
+        "amount debit credit", "montant", "montant de la transaction", "montant net",
+    },
+    "debit": {
+        "debit", "debits", "debit amount", "amount debit", "amount debited", "debited", "dr",
+        "withdrawal", "withdrawals", "withdrawal amount", "withdrawals amount", "withdrawn",
+        "money out", "paid out", "amount out", "out", "outflow", "outflows", "outgoing", "outgoings",
+        "charge", "charges", "charge amount", "purchase", "purchases", "spent", "spending",
+        "expense", "expenses", "payment out", "payments out",
+        "retrait", "retraits", "montant retire", "sortie", "sorties", "debits retraits",
+    },
+    "credit": {
+        "credit", "credits", "credit amount", "amount credit", "amount credited", "credited", "cr",
+        "deposit", "deposits", "deposit amount", "deposits amount",
+        "money in", "paid in", "amount in", "in", "inflow", "inflows", "incoming", "received",
+        "payment", "payments", "payments credits", "payment amount", "refund", "refunds",
+        "depot", "depots", "montant depose", "entree", "entrees", "credits depots",
+    },
 }
+
+# Columns named only by a currency ("CAD$", "USD") hold amounts. When there
+# are several, the first is used.
+_CURRENCIES = {
+    "cad", "cdn", "usd", "us", "eur", "gbp", "aud", "nzd", "chf", "jpy", "mxn", "inr",
+    "dollars", "dollar",
+}
+# never the transaction's own amount, whatever else the header says
+_NOT_AMOUNT_WORDS = {"balance", "solde", "foreign", "original", "exchange", "rate", "fee", "fees"}
 
 # how far down to look for the table before giving up
 _SEARCH_ROWS = 30
@@ -141,21 +197,40 @@ def _detect_date_format(values: List[str]) -> Optional[str]:
 
 
 def _header_key(cell: str) -> str:
-    return " ".join(re.sub(r"[^a-z]+", " ", cell.lower()).split())
+    text = unicodedata.normalize("NFKD", cell.lower())
+    text = "".join(c for c in text if not unicodedata.combining(c))
+    words = re.sub(r"[^a-z]+", " ", text).split()
+    kept = [w for w in words if w not in _CURRENCIES]
+    if words and not kept:
+        return "amount"
+    return " ".join(kept)
+
+
+def _header_role(cell: str) -> Optional[str]:
+    key = _header_key(cell)
+    if not key or _NOT_AMOUNT_WORDS & set(key.split()):
+        return None
+    for role, names in _HEADER_ROLES.items():
+        if key in names:
+            return role
+    if key.startswith("amount ") or key.endswith(" amount"):
+        return "amount"
+    return None
 
 
 def _roles_from_header(row: List[str]) -> Dict[str, int]:
-    """Column index for each role this header names (first match wins, so
-    'Transaction Date' beats a later 'Posted Date')."""
+    """Column index for each role this header names. The first match wins,
+    so 'Transaction Date' beats a later 'Posted Date'. A second description
+    column ('Description 2') becomes the extra description."""
     roles: Dict[str, int] = {}
     for i, cell in enumerate(row):
-        key = _header_key(cell)
-        for role, names in _HEADER_ROLES.items():
-            if role in roles:
-                continue
-            if key in names or (role == "amount" and key.startswith("amount")):
-                roles[role] = i
-                break
+        role = _header_role(cell)
+        if role == "description" and "description" in roles:
+            role = "description_extra"
+        if role and role not in roles:
+            roles[role] = i
+    if "description" not in roles and "description_extra" in roles:
+        roles["description"] = roles.pop("description_extra")
     return roles
 
 
@@ -280,6 +355,7 @@ def parse_statement(
             mapping = ColumnMapping(
                 date=roles["date"],
                 description=roles.get("description"),
+                description_extra=roles.get("description_extra"),
                 amount=roles.get("amount"),
                 debit=None if "amount" in roles else roles.get("debit"),
                 credit=None if "amount" in roles else roles.get("credit"),
@@ -287,7 +363,10 @@ def parse_statement(
         else:
             mapping = _infer_mapping(data_rows, width)
 
-    for col in (mapping.date, mapping.description, mapping.amount, mapping.debit, mapping.credit):
+    for col in (
+        mapping.date, mapping.description, mapping.description_extra,
+        mapping.amount, mapping.debit, mapping.credit,
+    ):
         if col is not None and col >= width:
             raise StatementError(f"This file has only {width} columns.")
 
@@ -328,7 +407,9 @@ def parse_statement(
         parsed.append(ParsedRow(
             index=index,
             date=tx_date,
-            description=cell(row, cols.description)[:255],
+            description=" - ".join(
+                t for t in (cell(row, cols.description), cell(row, cols.description_extra)) if t
+            )[:255],
             amount=abs(inflow) if inflow else None,
             type="income" if inflow is not None and inflow > 0 else "expense",
             warning=f"Couldn't read the {' or '.join(problems)}." if problems else None,

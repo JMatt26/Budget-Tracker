@@ -7,6 +7,7 @@ import pytest
 from app.schemas import ColumnMapping
 from app.statement_import import (
     StatementError,
+    _roles_from_header,
     normalize_description,
     parse_amount,
     parse_statement,
@@ -56,6 +57,47 @@ def test_headerless_file_is_inferred_and_balance_ignored():
         (date(2026, 10, 15), "TIM HORTONS 0042", Decimal("3.25"), "expense"),
         (date(2026, 10, 20), "REFUND AMAZON", Decimal("25.00"), "income"),
     ]
+
+
+def test_rbc_export_joins_both_descriptions_and_reads_cad_column():
+    parsed = _parse("rbc.csv", kind="bank")
+    m = parsed.mapping
+    assert (m.date, m.description, m.description_extra, m.amount) == (2, 4, 5, 6)
+    assert _summary(parsed) == [
+        (date(2026, 10, 3), "Payroll Deposit - EXAMPLE CORP", Decimal("1850.00"), "income"),
+        (date(2026, 10, 4), "Contactless Interac purchase - 4821 - GROCER 112", Decimal("64.18"), "expense"),
+        (date(2026, 10, 6), "Cheque", Decimal("900.00"), "expense"),
+        (date(2026, 10, 7), "Online Banking transfer - 7732", Decimal("200.00"), "expense"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "header, expected",
+    [
+        # Scotiabank / TD style
+        (["Date", "Transaction Details", "Withdrawals", "Deposits", "Balance"],
+         {"date": 0, "description": 1, "debit": 2, "credit": 3}),
+        # French (Desjardins, National Bank)
+        (["Date de transaction", "Libellé", "Débit", "Crédit", "Solde"],
+         {"date": 0, "description": 1, "debit": 2, "credit": 3}),
+        (["Date", "Description", "Montant"], {"date": 0, "description": 1, "amount": 2}),
+        # currency in the header, a balance that must be ignored
+        (["Posted Date", "Payee", "Amount (CAD)", "Balance"],
+         {"date": 0, "description": 1, "amount": 2}),
+        # Amex style: a memo column only adds to the description
+        (["Date", "Reference", "Description", "Amount"],
+         {"date": 0, "description_extra": 1, "description": 2, "amount": 3}),
+        # memo is the description when there's nothing better
+        (["Booking Date", "Memo", "Money In", "Money Out"],
+         {"date": 0, "description": 1, "credit": 2, "debit": 3}),
+        # a foreign-currency amount is never the amount
+        (["Date", "Merchant", "Original Amount", "Billed Amount"],
+         {"date": 0, "description": 1, "amount": 3}),
+        (["Date", "Description", "Debit/Credit"], {"date": 0, "description": 1, "amount": 2}),
+    ],
+)
+def test_header_synonyms(header, expected):
+    assert _roles_from_header(header) == expected
 
 
 def test_day_first_dates_are_detected_from_the_whole_file():

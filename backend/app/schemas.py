@@ -285,6 +285,7 @@ class ColumnMapping(BaseModel):
     least one of `debit`/`credit` must be set."""
     date: int = Field(..., ge=0)
     description: Optional[int] = Field(None, ge=0)
+    description_extra: Optional[int] = Field(None, ge=0)  # e.g. RBC's "Description 2"
     amount: Optional[int] = Field(None, ge=0)
     debit: Optional[int] = Field(None, ge=0)  # money out
     credit: Optional[int] = Field(None, ge=0)  # money in

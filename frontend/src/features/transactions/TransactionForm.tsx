@@ -14,6 +14,7 @@ import { toLocalISODate } from "../../lib/format";
 import React from "react";
 import { fetchBudgets } from "../../lib/budget-api";
 import { CategoryPicker } from "./CategoryPicker";
+import { invalidateTransactionQueries } from "../../lib/queries";
 
 const schema = z
   .object({
@@ -36,7 +37,7 @@ const schema = z
 type FormValues = z.input<typeof schema>;
 type FormValuesOutput = z.infer<typeof schema>;
 
-const fetchCategories = async (): Promise<Category[]> => {
+export const fetchCategories = async (): Promise<Category[]> => {
   const { data } = await api.get("/categories", {
     params: { limit: 100, offset: 0 },
   });
@@ -153,26 +154,7 @@ export const TransactionForm = ({
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["transactions"],
-      });
-      // Invalidate all budget statuses and categories to ensure all budgets update
-      queryClient.invalidateQueries({
-        queryKey: ["budget-status"],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["budget-categories"],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["budget-transactions"],
-      });
-      // Also invalidate the budgets list to refresh the cards
-      queryClient.invalidateQueries({
-        queryKey: ["budgets"],
-      });
-      // Dashboard and report totals
-      queryClient.invalidateQueries({ queryKey: ["summary"] });
-      queryClient.invalidateQueries({ queryKey: ["summary-month"] });
+      invalidateTransactionQueries(queryClient);
       onClose();
     },
   });

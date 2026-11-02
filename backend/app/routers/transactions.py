@@ -1,6 +1,7 @@
 from typing import List, Optional, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from starlette.status import HTTP_204_NO_CONTENT
 from datetime import date
@@ -52,6 +53,23 @@ def _user_categories(db: Session, user_id: int, category_ids: List[int]) -> List
     return categories
 
 
+def _build_transaction(db: Session, user_id: int, tx_in: schemas.TransactionCreate) -> models.Transaction:
+    """A new, unsaved transaction, after checking its categories and budget
+    belong to the user."""
+    categories = _user_categories(db, user_id, tx_in.category_ids)
+
+    tx_data = tx_in.model_dump(exclude={"category_ids"})
+    tx_data["budget_id"] = _budget_cycle_id(db, user_id, tx_in.budget_id, tx_in.date)
+    return models.Transaction(**tx_data, categories=categories, user_id=user_id)
+
+
+def _first_error(exc: ValidationError) -> str:
+    err = exc.errors()[0]
+    message = err["msg"].removeprefix("Value error, ")
+    field = ".".join(str(part) for part in err["loc"])
+    return f"{field}: {message}" if field else message
+
+
 @router.post(
     "/",
     response_model=schemas.TransactionRead,
@@ -62,16 +80,45 @@ def create_transaction(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    categories = _user_categories(db, current_user.id, tx_in.category_ids)
-
-    tx_data = tx_in.model_dump(exclude={"category_ids"})
-    tx_data["budget_id"] = _budget_cycle_id(db, current_user.id, tx_in.budget_id, tx_in.date)
-    tx = models.Transaction(**tx_data, categories=categories, user_id=current_user.id)
+    tx = _build_transaction(db, current_user.id, tx_in)
 
     db.add(tx)
     db.commit()
     db.refresh(tx)
     return tx
+
+
+@router.post(
+    "/bulk",
+    response_model=List[schemas.TransactionRead],
+    status_code=status.HTTP_201_CREATED,
+)
+def create_transactions_bulk(
+    body: schemas.TransactionBulkCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Save many transactions at once (a reviewed statement import). All or
+    nothing: the first invalid item rejects the request, naming its row
+    (1-based, in the order sent)."""
+    txs = []
+    for row, raw in enumerate(body.items, start=1):
+        try:
+            tx_in = schemas.TransactionCreate.model_validate(raw)
+            txs.append(_build_transaction(db, current_user.id, tx_in))
+        except ValidationError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Row {row}: {_first_error(exc)}",
+            )
+        except HTTPException as exc:
+            raise HTTPException(status_code=exc.status_code, detail=f"Row {row}: {exc.detail}")
+
+    db.add_all(txs)
+    db.commit()
+    for tx in txs:
+        db.refresh(tx)
+    return txs
 
 
 

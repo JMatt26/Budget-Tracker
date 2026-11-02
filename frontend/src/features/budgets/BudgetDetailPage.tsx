@@ -47,6 +47,7 @@ import {
 import { api } from "../../lib/api";
 import { categoryColor, categoryNames, formatMoney, formatSignedMoney, TYPE_META } from "../../lib/format";
 import { CategoryPicker } from "../transactions/CategoryPicker";
+import { invalidateTransactionQueries } from "../../lib/queries";
 import { PAYMENT_METHODS } from "../../lib/types";
 import type {
   Category,
@@ -351,13 +352,7 @@ const BudgetTransactionForm = ({
       return response;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["budget-transactions", budgetId] });
-      queryClient.invalidateQueries({ queryKey: ["budget-status", budgetId] });
-      queryClient.invalidateQueries({ queryKey: ["budget-categories", budgetId] });
-      queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["budgets"] });
-      queryClient.invalidateQueries({ queryKey: ["summary"] });
-      queryClient.invalidateQueries({ queryKey: ["summary-month"] });
+      invalidateTransactionQueries(queryClient);
       onClose();
     },
     onError: (err: any) => {

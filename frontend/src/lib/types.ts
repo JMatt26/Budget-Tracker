@@ -65,6 +65,40 @@ export interface BudgetCategory {
   updated_at: string;
 }
 
+export type StatementKind = "credit" | "bank";
+
+// Which statement column holds what (0-based).
+export interface ColumnMapping {
+  date: number;
+  description: number | null;
+  description_extra?: number | null;
+  amount: number | null;
+  debit: number | null;
+  credit: number | null;
+  date_format: string | null;
+  flip_sign: boolean;
+}
+
+export interface StatementRow {
+  index: number;
+  date: string | null;
+  description: string;
+  amount: number | null;
+  type: "income" | "expense";
+  payment_method: PaymentMethod | null;
+  category_ids: number[];
+  budget_id: number | null;
+  duplicate: boolean;
+  selected: boolean;
+  warning: string | null;
+}
+
+export interface StatementPreview {
+  columns: string[];
+  mapping: ColumnMapping;
+  rows: StatementRow[];
+}
+
 export interface SummaryResponse {
   total_income: number;
   total_expense: number;

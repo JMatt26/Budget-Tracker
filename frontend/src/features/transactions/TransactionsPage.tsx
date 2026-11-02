@@ -12,6 +12,7 @@ import { useQuickAdd } from "../../components/layout/QuickAdd";
 import { categoryColor, categoryNames, dayLabel, formatMoney, formatSignedMoney, TYPE_META } from "../../lib/format";
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { ImportStatementModal } from "./import/ImportStatementModal";
 
 type Filters = {
     start_date?: string;
@@ -58,6 +59,14 @@ const TYPE_FILTERS: { value: "" | "income" | "expense" | "investment"; label: st
     const [showMoreFilters, setShowMoreFilters] = useState(false);
     const navigate = useNavigate();
     const { openTransaction } = useQuickAdd();
+    const [importing, setImporting] = useState(false);
+    const [importedCount, setImportedCount] = useState<number | null>(null);
+
+    React.useEffect(() => {
+      if (importedCount === null) return;
+      const timer = window.setTimeout(() => setImportedCount(null), 5000);
+      return () => window.clearTimeout(timer);
+    }, [importedCount]);
 
     const queryClient = useQueryClient();
 
@@ -188,12 +197,29 @@ const TYPE_FILTERS: { value: "" | "income" | "expense" | "investment"; label: st
                 {typeof data?.total === "number" && ` · ${data.total} total`}
               </span>
             )}
+            <Button variant="secondary" onClick={() => setImporting(true)}>
+              <Icon name="upload" size={16} />
+              Import
+            </Button>
             <Button variant="dark" onClick={handleAddClick} className="hidden sm:inline-flex">
               <Icon name="plus" size={16} strokeWidth={2.2} />
               Add
             </Button>
           </div>
         </div>
+
+        {importedCount !== null && (
+          <div role="status" className="animate-rise rounded-xl bg-saved-soft px-4 py-3 text-sm font-medium text-saved">
+            Imported {importedCount} {importedCount === 1 ? "transaction" : "transactions"}.
+          </div>
+        )}
+
+        {importing && (
+          <ImportStatementModal
+            onClose={() => setImporting(false)}
+            onImported={setImportedCount}
+          />
+        )}
 
         {showMoreFilters && (
           <Card className="animate-rise p-4 sm:p-5">

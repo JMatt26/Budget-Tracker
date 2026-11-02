@@ -1,0 +1,5 @@
+"Account Type","Account Number","Transaction Date","Cheque Number","Description 1","Description 2","CAD$","USD$"
+Chequing,00000-1234567,10/3/2026,,"Payroll Deposit","EXAMPLE CORP",1850.00,
+Chequing,00000-1234567,10/4/2026,,"Contactless Interac purchase - 4821","GROCER 112",-64.18,
+Chequing,00000-1234567,10/6/2026,123,"Cheque",,-900.00,
+Chequing,00000-1234567,10/7/2026,,"Online Banking transfer - 7732",,-200.00,

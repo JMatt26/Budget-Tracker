@@ -36,7 +36,8 @@ api.interceptors.request.use(
     }
     
     // Set Content-Type for requests with data
-    if (config.data && !config.headers["Content-Type"]) {
+    // (FormData gets its multipart type and boundary from the browser)
+    if (config.data && !(config.data instanceof FormData) && !config.headers["Content-Type"]) {
       config.headers["Content-Type"] = "application/json";
     }
     

@@ -19,7 +19,7 @@ export const Modal = ({
   onClose: () => void;
   children: ReactNode;
   variant?: "center" | "sheet";
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xl";
 }) => {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -40,7 +40,9 @@ export const Modal = ({
     <div
       className={clsx(
         "fixed inset-0 z-50 flex animate-fadein",
-        sheet ? "justify-end" : "items-center justify-center p-4"
+        sheet ? "justify-end" : "items-center justify-center p-4",
+        // a wide modal takes the whole screen on phones
+        size === "xl" && !sheet && "max-sm:p-0"
       )}
     >
       <button
@@ -60,7 +62,8 @@ export const Modal = ({
                 "max-h-[88vh] w-full animate-pop rounded-2xl shadow-lift",
                 size === "sm" && "max-w-sm",
                 size === "md" && "max-w-md",
-                size === "lg" && "max-w-2xl"
+                size === "lg" && "max-w-2xl",
+                size === "xl" && "h-[88vh] max-w-5xl max-sm:h-full max-sm:max-h-none max-sm:rounded-none"
               )
         )}
       >

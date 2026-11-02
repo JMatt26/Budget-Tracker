@@ -1,0 +1,8 @@
+Account Name: Everyday Chequing
+Account Number: XXXX-0000
+Statement Period: 2026-10-01 to 2026-10-31
+
+Date,Description,Withdrawals,Deposits,Balance
+2026-10-01,ACME PAYROLL,,2500.00,3100.00
+2026-10-02,HYDRO ONE,$85.20,,3014.80
+2026-10-15,E-TRANSFER RENT,"1,450.00",,1564.80

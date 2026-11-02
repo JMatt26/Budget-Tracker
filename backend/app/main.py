@@ -15,7 +15,7 @@ from slowapi.errors import RateLimitExceeded
 
 from . import schemas
 
-from .routers import transactions, categories, reports, budgets, auth, income
+from .routers import transactions, categories, reports, budgets, auth, income, imports
 
 configure_logging()
 
@@ -76,6 +76,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(budgets.router)
     app.include_router(auth.router)
     app.include_router(income.router)
+    app.include_router(imports.router)
 
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request: Request, exc: StarletteHTTPException):
